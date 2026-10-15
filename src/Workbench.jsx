@@ -3,7 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RotateCcw, Maximize, MousePointer2 } from "lucide-react";
 import { parts, jobs, chapterOf } from "./game.js";
-import { createDirectMemory } from "./DirectMemory.js";
+import { createDirectPC } from "./DirectPC.js";
 
 const anchors = {
   cooler: [-0.35, 3.65, 0.8],
@@ -305,6 +305,14 @@ function makeScene(host, onSelect, latest, labels) {
     }
   const dust = new THREE.Group();
   cooling.add(dust);
+  const dustPatches = [];
+  for (const y of [3.34, 3.96])
+    for (const x of [-0.72, -0.35, 0.02]) {
+      const patch = new THREE.Group();
+      patch.position.set(x, y, 0.68);
+      dust.add(patch);
+      dustPatches.push(patch);
+    }
   const dustMat = material("#b2a18b");
   for (let i = 0; i < 45; i++) {
     const p = new THREE.Mesh(
@@ -312,11 +320,11 @@ function makeScene(host, onSelect, latest, labels) {
       dustMat,
     );
     p.position.set(
-      -0.85 + ((i * 17) % 43) / 43,
-      3.1 + ((i * 13) % 41) / 38,
-      0.57,
+      (((i * 17) % 43) / 43 - 0.5) * 0.22,
+      (((i * 13) % 41) / 41 - 0.5) * 0.24,
+      (i % 3) * 0.012,
     );
-    dust.add(p);
+    dustPatches[i % dustPatches.length].add(p);
   }
   const fanDevice = new THREE.Group();
   scene.add(fanDevice);
@@ -508,7 +516,7 @@ function makeScene(host, onSelect, latest, labels) {
   const selection = new THREE.Box3Helper(new THREE.Box3(), "#f0a06f");
   selection.visible = false;
   scene.add(selection);
-  const direct = createDirectMemory({
+  const direct = createDirectPC({
     host,
     renderer,
     camera,
@@ -518,6 +526,7 @@ function makeScene(host, onSelect, latest, labels) {
     screws,
     ram,
     latches: ramLatches,
+    dustPatches,
     latest,
   });
   const ray = new THREE.Raycaster();
@@ -678,6 +687,11 @@ function makeScene(host, onSelect, latest, labels) {
       camera.position.copy(controls.target).add(new THREE.Vector3(3.2, 1.2, 7));
       controls.update();
     },
+    focusCooler: () => {
+      controls.target.set(-0.35, 3.65, 0.5);
+      camera.position.copy(controls.target).add(new THREE.Vector3(2.5, 0.8, 7));
+      controls.update();
+    },
     reset: () => {
       camera.position.copy(home);
       controls.target.set(0, 2.55, 0);
@@ -725,12 +739,23 @@ export default function Workbench({
     [pushMode, setPushMode] = useState(false);
   latest.current = { game, act, exploded, direct, pushMode, onHud: setHud };
   useEffect(() => {
-    setPushMode(direct && game.repairStep === 2 && !game.fixed);
+    setPushMode(
+      direct && game.jobId === "memory" && game.repairStep === 2 && !game.fixed,
+    );
   }, [direct, game.jobId, game.repairStep, game.panelOpen, game.fixed]);
   useEffect(() => {
     // Return from the RAM close-up so the removed side panel is reachable again.
     if (direct && game.fixed) api.current?.reset();
   }, [direct, game.fixed]);
+  useEffect(() => {
+    if (
+      direct &&
+      game.jobId === "cooling" &&
+      game.inspected.includes("cooler") &&
+      !game.fixed
+    )
+      api.current?.focusCooler();
+  }, [direct, game.jobId, game.inspected.length, game.fixed]);
   useEffect(() => {
     try {
       api.current = makeScene(
@@ -773,7 +798,9 @@ export default function Workbench({
               {hud.targets.map((target) => (
                 <div
                   key={target.id}
-                  className={`mechanic-marker ${target.id === "screw" ? "screw-marker" : ""} ${target.guide ? "guide-marker" : ""} ${hud.canPush && hud.aligned ? "aligned-marker" : ""}`}
+                  className={`mechanic-marker ${target.id === "screw" ? "screw-marker" : ""} ${target.id.startsWith("dust") ? "dust-marker" : ""} ${target.guide ? "guide-marker" : ""} ${hud.canPush && hud.aligned ? "aligned-marker" : ""}`}
+                  title={target.label}
+                  data-cleared={target.cleared || false}
                   data-kind={target.id}
                   data-axis-x={target.axis?.x || 0}
                   data-axis-y={target.axis?.y || 0}
@@ -781,15 +808,21 @@ export default function Workbench({
                 >
                   <span className="marker-center" />
                   <i>
-                    {target.guide
-                      ? "+"
-                      : target.id === "screw"
-                        ? hud.action === "unscrew"
-                          ? "↺"
-                          : "↻"
-                        : target.id.startsWith("latch")
-                          ? "↕"
-                          : "✥"}
+                    {target.cleared
+                      ? "✓"
+                      : target.id.startsWith("dust")
+                        ? "·"
+                        : target.id === "fan-hold"
+                          ? "☝"
+                          : target.guide
+                            ? "+"
+                            : target.id === "screw"
+                              ? hud.action === "unscrew"
+                                ? "↺"
+                                : "↻"
+                              : target.id.startsWith("latch")
+                                ? "↕"
+                                : "✥"}
                   </i>
                   {target.axis && (
                     <span
@@ -829,14 +862,26 @@ export default function Workbench({
             手动实操 /{" "}
             {hud.action === "screw" || hud.action === "unscrew"
               ? `${Math.round(hud.progress * 720)}° / 720°`
-              : hud.canPush
-                ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
-                : "沿结构操作"}
+              : hud.cleaning
+                ? hud.step === 0
+                  ? "固定风扇叶片"
+                  : `积灰清理 ${hud.cleaned} / ${hud.total}`
+                : hud.canPush
+                  ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
+                  : "沿结构操作"}
           </span>
           <p>{hud.instruction}</p>
           <div className="mechanic-progress">
             <i style={{ width: `${Math.min(100, hud.progress * 100)}%` }} />
           </div>
+          {hud.cleaning && (
+            <div className="mechanic-buttons">
+              <button onClick={() => api.current?.focusCooler()}>
+                散热器近景
+              </button>
+              <small>在模型标记上操作，完成后松开鼠标</small>
+            </div>
+          )}
           {hud.canPush && (
             <>
               <div

@@ -216,6 +216,112 @@ try {
   await expect.poll(async () => (await state()).delivered).toBe(true);
   expect(errors).toEqual([]);
   console.log("PASS complete direct repair, reassembly and verification");
+  await closeLesson();
+  await page.getByRole("button", { name: /维修工单/ }).click();
+  await page
+    .locator(".job-card")
+    .filter({ hasText: "一开游戏，就自动关机" })
+    .click();
+  await closeLesson();
+  await page.getByRole("button", { name: "装备市场", exact: true }).click();
+  await page
+    .locator(".market-grid article")
+    .filter({ hasText: "气吹" })
+    .getByRole("button", { name: "购买装备" })
+    .click();
+  await page.getByRole("button", { name: "关闭窗口" }).click();
+  await expect(
+    page.getByRole("button", { name: "3D 手动实操", exact: true }),
+  ).toHaveClass("active");
+  await page.getByTestId("primary-action").click();
+  await page.getByTestId("primary-action").click();
+  await expect(page.getByTestId("primary-action")).toBeDisabled();
+  await tool("螺丝刀");
+  for (let i = 4; i > 0; i--) {
+    await turn(false);
+    await expect.poll(async () => (await state()).screws).toBe(i - 1);
+  }
+  await tool("拆装");
+  p = await marker("cover");
+  await drag(p, { x: p.x + p.ax * 2.1, y: p.y + p.ay * 2.1 });
+  await expect.poll(async () => (await state()).panelOpen).toBe(true);
+  await page
+    .locator(".part-selector button")
+    .filter({ hasText: "散热器" })
+    .click();
+  await tool("观察");
+  await page.getByTestId("primary-action").click();
+  await closeLesson();
+  await expect(page.getByTestId("primary-action")).toBeDisabled();
+  const press = async (kind, duration) => {
+    const point = await marker(kind);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+    await page.waitForTimeout(duration);
+    await page.mouse.up();
+    await page.waitForTimeout(150);
+  };
+  await tool("气吹");
+  await press("fan-hold", 750);
+  expect((await state()).repairStep).toBe(0);
+  await expect(page.locator(".mechanic-hud")).toContainText("拆装");
+  await tool("拆装");
+  await press("fan-hold", 40);
+  expect((await state()).repairStep).toBe(0);
+  await press("fan-hold", 750);
+  await expect.poll(async () => (await state()).repairStep).toBe(1);
+  await tool("气吹");
+  await press("dust0", 1050);
+  expect(await page.locator('.dust-marker[data-cleared="true"]').count()).toBe(
+    0,
+  );
+  await expect(page.locator(".mechanic-hud")).toContainText("太久");
+  for (let i = 0; i < 6; i++) {
+    await press(`dust${i}`, 240);
+    if (i < 5) {
+      expect((await state()).fixed).toBe(false);
+      expect(
+        await page.locator('.dust-marker[data-cleared="true"]').count(),
+      ).toBe(i + 1);
+    }
+    if (i === 0) {
+      await press("dust0", 240);
+      expect(
+        await page.locator('.dust-marker[data-cleared="true"]').count(),
+      ).toBe(1);
+    }
+    if (i === 1)
+      await page.screenshot({
+        path: "artifacts/manual-cooling.png",
+        fullPage: true,
+      });
+  }
+  await expect.poll(async () => (await state()).fixed).toBe(true);
+  console.log(
+    "PASS second job: manual chassis, hold fan, reject wrong tool/long puff, clean six individual regions",
+  );
+  await tool("拆装");
+  p = await marker("cover");
+  await drag(p, await marker("cover-guide"));
+  expect((await state()).panelOpen).toBe(true);
+  p = await marker("cover");
+  await drag(p, { x: p.x + p.ax * 3, y: p.y + p.ay * 3 }, true);
+  await expect.poll(async () => (await state()).panelOpen).toBe(false);
+  await tool("螺丝刀");
+  for (let i = 0; i < 4; i++) {
+    await turn(true);
+    await expect.poll(async () => (await state()).screws).toBe(i + 1);
+  }
+  await page.getByTestId("primary-action").click();
+  await page.getByTestId("primary-action").click();
+  await page.locator(".quiz-options button").nth(2).click();
+  await page.getByRole("button", { name: "学会了，准备交付" }).click();
+  await page.getByTestId("primary-action").click();
+  await expect.poll(async () => (await state()).delivered).toBe(true);
+  expect(errors).toEqual([]);
+  console.log(
+    "PASS complete second direct repair, reassembly, quiz and delivery",
+  );
 } catch (e) {
   await page.screenshot({
     path: "artifacts/direct-failure.png",

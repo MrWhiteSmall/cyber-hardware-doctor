@@ -3425,6 +3425,18 @@ h1 > span {
   border: 2px dashed #ce9168;
   box-shadow: 0 0 0 4px #fffae93b;
 }
+.mechanic-marker.dust-marker {
+  width: 22px;
+  height: 22px;
+  border-color: #ba8453;
+  background: #f0d7b388;
+  box-shadow: 0 0 0 3px #f8ebd644;
+}
+.mechanic-marker.dust-marker[data-cleared="true"] {
+  color: #468363;
+  border-color: #468363;
+  background: #deeddf88;
+}
 .screw-marker > i {
   font-size: 37px;
   opacity: 0.6;

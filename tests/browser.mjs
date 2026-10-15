@@ -50,6 +50,9 @@ for (const [index, job] of jobs.entries()) {
     await page.locator(".job-card").filter({ hasText: job.title }).click();
     await closeTutorial();
   }
+  // Reload restores the default manual mode for supported jobs; this suite
+  // explicitly exercises the assisted route through every job.
+  await page.getByRole("button", { name: "辅助教学", exact: true }).click();
   for (const id of job.needs) {
     const saved = await state();
     if (saved.purchased.includes(id)) continue;

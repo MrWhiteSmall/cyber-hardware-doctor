@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { objective } from "./game.js";
+import { objective, tools } from "./game.js";
+import { createCoolingRepair } from "./CoolingRepair.js";
 import {
   TAU,
   ALIGNMENT_TOLERANCE,
@@ -9,13 +10,14 @@ import {
   pushPart,
 } from "./mechanics.js";
 
+export const supportsDirectJob = (id) => ["memory", "cooling"].includes(id);
 export const isDirectAction = (game) =>
-  game.jobId === "memory" &&
+  supportsDirectJob(game.jobId) &&
   ["unscrew", "screw", "open", "close", "repair"].includes(
     objective(game).action,
   );
 
-export function createDirectMemory({
+export function createDirectPC({
   host,
   renderer,
   camera,
@@ -25,6 +27,7 @@ export function createDirectMemory({
   screws,
   ram,
   latches,
+  dustPatches,
   latest,
 }) {
   let key = "",
@@ -106,6 +109,13 @@ export function createDirectMemory({
     world,
     axis: axis ? projectAxis(world, axis) : null,
   });
+  const cooling = createCoolingRepair({
+    scene,
+    patches: dustPatches,
+    target,
+    planePoint,
+    latest,
+  });
   function targets(game, goal) {
     if (goal.action === "unscrew" || goal.action === "screw") {
       const index = goal.action === "unscrew" ? game.screws - 1 : game.screws;
@@ -143,6 +153,8 @@ export function createDirectMemory({
         });
       return result;
     }
+    if (goal.action === "repair" && game.jobId === "cooling")
+      return cooling.targets(game);
     if (
       goal.action === "repair" &&
       (game.repairStep === 0 || game.repairStep === 3)
@@ -190,21 +202,31 @@ export function createDirectMemory({
     const game = latest.current.game,
       goal = objective(game),
       point = local(e);
-    const hit = currentTargets.find(
-      (t) =>
-        !t.guide &&
-        Math.hypot(t.x - point.x, t.y - point.y) < (t.id === "screw" ? 37 : 32),
-    );
+    const hit = currentTargets
+      .filter(
+        (t) =>
+          !t.guide &&
+          Math.hypot(t.x - point.x, t.y - point.y) <
+            (t.id === "screw" ? 37 : t.id.startsWith("dust") ? 14 : 32),
+      )
+      .sort(
+        (a, b) =>
+          Math.hypot(a.x - point.x, a.y - point.y) -
+          Math.hypot(b.x - point.x, b.y - point.y),
+      )[0];
     if (!hit) return;
     e.stopImmediatePropagation();
     e.preventDefault();
     if (game.tool !== goal.tool) {
-      note = `先选择「${goal.tool === "driver" ? "螺丝刀" : "拆装"}」工具，不能空手完成这一步。`;
+      note = `先选择「${tools.find((t) => t.id === goal.tool)?.name}」工具，再操作设备。`;
       return;
     }
     controls.enabled = false;
     canvas.setPointerCapture(e.pointerId);
-    if (goal.action === "repair") latest.current.act("select", "ram");
+    if (goal.action === "repair")
+      latest.current.act("select", game.jobId === "cooling" ? "cooler" : "ram");
+    if (game.jobId === "cooling" && goal.action === "repair")
+      cooling.begin(hit, point);
     const objectPose = hit.id === "cover" ? cover : pose;
     gesture = {
       id: hit.id,
@@ -221,6 +243,8 @@ export function createDirectMemory({
     note = "";
   }
   function move(e) {
+    if (active && latest.current.game.jobId === "cooling")
+      cooling.hover(local(e));
     if (!gesture) return;
     e.stopImmediatePropagation();
     e.preventDefault();
@@ -228,7 +252,9 @@ export function createDirectMemory({
       goal = objective(game),
       point = local(e),
       g = gesture;
-    if (g.id === "screw") {
+    if (game.jobId === "cooling" && goal.action === "repair") {
+      cooling.move(point);
+    } else if (g.id === "screw") {
       const next = Math.atan2(point.y - g.center.y, point.x - g.center.x);
       if (Math.hypot(point.x - g.center.x, point.y - g.center.y) > 12)
         progress = turnScrew(
@@ -318,6 +344,12 @@ export function createDirectMemory({
     controls.enabled = true;
     if (canvas.hasPointerCapture(e.pointerId))
       canvas.releasePointerCapture(e.pointerId);
+    if (game.jobId === "cooling" && goal.action === "repair") {
+      if (cooling.finish(e.type === "pointercancel"))
+        latest.current.act("repair");
+      return;
+    }
+    if (e.type === "pointercancel") return;
     if (!g.done) return;
     if (g.id.startsWith("latch")) {
       if (latchOpen.every((open) => open === (game.repairStep === 0)))
@@ -328,6 +360,7 @@ export function createDirectMemory({
   function rotate(e) {
     if (
       !active ||
+      latest.current.game.jobId !== "memory" ||
       latest.current.game.repairStep !== 2 ||
       e.key.toLowerCase() !== "r" ||
       e.repeat
@@ -344,7 +377,11 @@ export function createDirectMemory({
       goal = objective(game);
     if (
       goal.action !== "close" &&
-      !(goal.action === "repair" && game.repairStep === 2)
+      !(
+        game.jobId === "memory" &&
+        goal.action === "repair" &&
+        game.repairStep === 2
+      )
     )
       return;
     if (game.tool !== goal.tool) {
@@ -383,7 +420,11 @@ export function createDirectMemory({
     const goal = objective(latest.current.game);
     if (
       goal.action !== "close" &&
-      !(goal.action === "repair" && latest.current.game.repairStep === 2)
+      !(
+        latest.current.game.jobId === "memory" &&
+        goal.action === "repair" &&
+        latest.current.game.repairStep === 2
+      )
     )
       return;
     e.preventDefault();
@@ -399,7 +440,8 @@ export function createDirectMemory({
     update(time) {
       const game = latest.current.game,
         goal = objective(game),
-        enabled = latest.current.direct && game.jobId === "memory";
+        enabled = latest.current.direct && supportsDirectJob(game.jobId);
+      const memory = game.jobId === "memory";
       active = enabled && isDirectAction(game);
       tool.visible = false;
       ghost.visible = false;
@@ -416,6 +458,7 @@ export function createDirectMemory({
         if (
           previously === "off" ||
           previously === "" ||
+          previously.split(":")[0] !== game.jobId ||
           !enabled ||
           goal.action === "open" ||
           goal.action === "close"
@@ -425,11 +468,11 @@ export function createDirectMemory({
             y: 0,
             z: game.panelOpen ? 1.5 : 0,
           };
-        if (game.repairStep === 2 && previously.indexOf(":2:") < 0)
+        if (memory && game.repairStep === 2 && previously.indexOf(":2:") < 0)
           pose = { x: 0, y: 0, z: 1.8 };
         else if (game.repairStep !== 2) pose = { x: 0, y: 0, z: 0 };
         latchOpen =
-          game.repairStep >= 1 && game.repairStep <= 3 && !game.fixed
+          memory && game.repairStep >= 1 && game.repairStep <= 3 && !game.fixed
             ? [true, true]
             : [false, false];
         angle = 0;
@@ -471,12 +514,14 @@ export function createDirectMemory({
             tool.visible = true;
           }
         }
-        ghost.visible = goal.action === "repair" && game.repairStep === 2;
+        ghost.visible =
+          memory && goal.action === "repair" && game.repairStep === 2;
         ghost.material.color.set(aligned(pose, angle) ? "#57946d" : "#d48f5d");
       }
       panel.updateMatrixWorld(true);
       ram.updateMatrixWorld(true);
       latches.forEach((l) => l.updateMatrixWorld(true));
+      cooling.update(game, enabled);
       currentTargets = active ? targets(game, goal) : [];
       if (time - lastHud > 70) {
         lastHud = time;
@@ -545,7 +590,13 @@ export function createDirectMemory({
                 angle: Math.round(((angle % TAU) / Math.PI) * 180),
                 canPush:
                   goal.action === "close" ||
-                  (goal.action === "repair" && game.repairStep === 2),
+                  (memory && goal.action === "repair" && game.repairStep === 2),
+                ...(game.jobId === "cooling" && goal.action === "repair"
+                  ? {
+                      ...cooling.hud(game),
+                      ...(note ? { instruction: note } : {}),
+                    }
+                  : {}),
               }
             : null,
         );
@@ -556,6 +607,7 @@ export function createDirectMemory({
     },
     nudge,
     dispose: () => {
+      cooling.dispose();
       canvas.removeEventListener("pointerdown", begin, true);
       canvas.removeEventListener("pointermove", move, true);
       canvas.removeEventListener("pointerup", finish, true);

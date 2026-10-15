@@ -1,5 +1,9 @@
 export const TAU = Math.PI * 2;
 export const ALIGNMENT_TOLERANCE = 0.12;
+export const FAN_HOLD_MS = 650;
+export function validAirPuff(duration, drift) {
+  return duration >= 120 && duration <= 900 && drift <= 22;
+}
 export function angleDelta(previous, next) {
   return Math.atan2(Math.sin(next - previous), Math.cos(next - previous));
 }

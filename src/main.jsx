@@ -68,7 +68,7 @@ import {
 } from "./game.js";
 import { toolLessons } from "./tutorials.js";
 import { roadmap } from "./roadmap.js";
-import { isDirectAction } from "./DirectMemory.js";
+import { isDirectAction, supportsDirectJob } from "./DirectPC.js";
 import "./styles.css";
 
 const STORE = "little-repair-shop-v2";
@@ -275,7 +275,7 @@ function App() {
     selected = parts[game.selected];
   const chapter = chapterOf(job),
     inventory = [...starterTools, ...profile.purchased];
-  const direct = manual && game.jobId === "memory";
+  const direct = manual && supportsDirectJob(game.jobId);
   const visibleTools = tools.filter(
     (t) =>
       starterTools.includes(t.id) ||
@@ -527,7 +527,7 @@ function App() {
           </span>
           <button
             className={direct ? "active" : ""}
-            disabled={game.jobId !== "memory"}
+            disabled={!supportsDirectJob(game.jobId)}
             onClick={() => {
               setManual(true);
               setExploded(false);
@@ -544,7 +544,9 @@ function App() {
           <small>
             {game.jobId === "memory"
               ? "手动旋拧、释放卡扣、轴向拔插；对齐不会自动连接。"
-              : "本关目前为辅助教学；首关已开放手动实操。"}
+              : game.jobId === "cooling"
+                ? "手动旋拧、移开侧板、固定叶片、逐处气吹清灰。"
+                : "本关目前为辅助教学；电脑前两关已开放手动实操。"}
           </small>
         </div>
         <div className="workspace">
@@ -757,7 +759,9 @@ function App() {
                     ? `线索：这张工单与${parts[job.target].name}有关，选中它再点击检查。`
                     : goal.action === "repair"
                       ? direct
-                        ? "选择拆装工具，在 3D 视图中沿结构操作；对齐后要主动推入。"
+                        ? game.jobId === "cooling"
+                          ? "在叶片标记上长按固定，再换气吹，对准每处积灰短按约半秒并松开。"
+                          : "选择拆装工具，在 3D 视图中沿结构操作；对齐后要主动推入。"
                         : `选中${parts[job.target].name}，点击下方按钮完成操作。`
                       : direct && isDirectAction(game)
                         ? "按 3D 视图中的旋转或平移提示，实际操作零件。"
@@ -1350,7 +1354,7 @@ function App() {
                   <b>选工具，再动手</b>
                   <p>
                     使用工具台或数字键 1–8
-                    切换工具。电脑首关默认手动实操：对准螺丝圆环，按住并逆时针旋拧，取下侧板后分别操作卡扣。辅助教学可用步骤按钮。
+                    切换工具。电脑前两关默认手动实操：先旋拧螺丝、移开侧板，首关练习内存拔插，第二关固定叶片并逐处短促气吹清灰。辅助教学可用步骤按钮。
                   </p>
                 </li>
                 <li>

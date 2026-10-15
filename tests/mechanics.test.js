@@ -6,7 +6,36 @@ import {
   aligned,
   pushPart,
   TAU,
+  validAirPuff,
 } from "../src/mechanics.js";
+import { isDirectAction, supportsDirectJob } from "../src/DirectPC.js";
+import { createGame } from "../src/game.js";
+
+test("电脑前两关的拆装必须在手动模式操作，其余关卡仍标为辅助教学", () => {
+  for (const id of ["memory", "cooling"]) {
+    assert.equal(supportsDirectJob(id), true);
+    const s = { ...createGame(id), unplugged: true, grounded: true };
+    assert.equal(isDirectAction(s), true, "螺丝步骤不能点按钮跳过");
+    assert.equal(
+      isDirectAction({
+        ...s,
+        screws: 0,
+        panelOpen: true,
+        inspected: [id === "memory" ? "ram" : "cooler"],
+      }),
+      true,
+    );
+    assert.equal(isDirectAction(createGame(id)), false, "安全准备保留界面操作");
+  }
+  assert.equal(supportsDirectJob("storage"), false);
+});
+
+test("气吹需要稳定瞄准与短促按压，连吹和滑离目标不能清灰", () => {
+  assert.equal(validAirPuff(250, 3), true);
+  assert.equal(validAirPuff(70, 0), false);
+  assert.equal(validAirPuff(1100, 0), false);
+  assert.equal(validAirPuff(250, 30), false);
+});
 
 test("螺丝跨越 ±π 时保持连续；错误方向不能卸下", () => {
   assert.ok(Math.abs(angleDelta(Math.PI - 0.1, -Math.PI + 0.1) - 0.2) < 1e-9);
