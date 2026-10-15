@@ -60,8 +60,9 @@ async function turn(clockwise, turns = 2.08) {
 }
 try {
   let p;
+  const bearingOnly = process.argv.includes("--bearing");
   const fanOnly = process.argv.includes("--fan");
-  if (!fanOnly) {
+  if (!fanOnly && !bearingOnly) {
     const storageOnly = process.argv.includes("--storage");
     if (!storageOnly) {
       await page.goto("http://127.0.0.1:5188", {
@@ -539,7 +540,7 @@ try {
       createGame("fan-dust"),
     );
     await page.reload();
-  } else if (!process.argv.includes("--storage")) {
+  } else if (!bearingOnly && !process.argv.includes("--storage")) {
     await closeLesson();
     await page.getByRole("button", { name: /维修工单/ }).click();
     await page
@@ -549,7 +550,7 @@ try {
     await page.locator(".job-card").filter({ hasText: "风变小了" }).click();
     await closeLesson();
   }
-  if (fanOnly || !process.argv.includes("--storage")) {
+  if (!bearingOnly && (fanOnly || !process.argv.includes("--storage"))) {
     await expect(
       page.getByRole("button", { name: "3D 手动实操", exact: true }),
     ).toHaveClass("active");
@@ -678,6 +679,217 @@ try {
     expect(errors).toEqual([]);
     console.log(
       "PASS fourth job: screw turning, axial guard extraction before moving aside, hold blades, clean 4 guard and 5 blade patches, reload recovery, mobile, deliberate reassembly and delivery",
+    );
+  }
+  if (bearingOnly || (!fanOnly && !process.argv.includes("--storage"))) {
+    if (bearingOnly) {
+      await page.goto("http://127.0.0.1:5188");
+      await page.evaluate(
+        (game) =>
+          localStorage.setItem(
+            "little-repair-shop-v2",
+            JSON.stringify({
+              version: 2,
+              game,
+              completed: ["memory", "cooling", "storage", "fan-dust"],
+              purchased: ["air", "cable"],
+              learned: ["ram", "cooler", "storage", "fanBlade"],
+              seen: ["chapter:pc", "chapter:fan"],
+            }),
+          ),
+        createGame("fan-bearing"),
+      );
+      await page.reload();
+    } else {
+      await closeLesson();
+      await page.getByRole("button", { name: /维修工单/ }).click();
+      await page
+        .locator(".chapter-tabs button")
+        .filter({ hasText: "CH.02" })
+        .click();
+      await page
+        .locator(".job-card")
+        .filter({ hasText: "吱呀作响的小风扇" })
+        .click();
+      await closeLesson();
+    }
+    await page.getByRole("button", { name: "装备市场", exact: true }).click();
+    await page
+      .locator(".market-grid article")
+      .filter({ hasText: market.find((item) => item.id === "oil").name })
+      .getByRole("button", { name: "购买装备" })
+      .click();
+    await page.getByRole("button", { name: "关闭窗口" }).click();
+    await expect(
+      page.getByRole("button", { name: "3D 手动实操", exact: true }),
+    ).toHaveClass("active");
+    await page.getByTestId("primary-action").click();
+    await page.getByTestId("primary-action").click();
+    await expect(page.getByTestId("primary-action")).toBeDisabled();
+    await tool("螺丝刀");
+    for (let i = 4; i > 0; i--) {
+      await turn(false);
+      await expect.poll(async () => (await state()).screws).toBe(i - 1);
+    }
+    await tool("拆装");
+    p = await marker("cover");
+    await drag(p, { x: p.x + p.ax * 1.3, y: p.y + p.ay * 1.3 });
+    p = await marker("cover");
+    await drag(p, { x: p.x + p.ax * 3.5, y: p.y + p.ay * 3.5 });
+    await expect.poll(async () => (await state()).panelOpen).toBe(true);
+    await page
+      .locator(".part-selector button")
+      .filter({ hasText: "电机轴承" })
+      .click();
+    await tool("观察");
+    await page.getByTestId("primary-action").click();
+    await closeLesson();
+    await tool("气吹");
+    p = await marker("bearing-spin");
+    await page.mouse.click(p.x, p.y);
+    expect((await state()).repairStep).toBe(0);
+    await tool("拆装");
+    p = await marker("bearing-spin");
+    await page.mouse.click(p.x, p.y);
+    expect((await state()).repairStep).toBe(0);
+    async function spinBearing() {
+      const p = await marker("bearing-spin"),
+        c = await marker("bearing-hub"),
+        a = Math.atan2(p.y - c.y, p.x - c.x),
+        r = Math.hypot(p.x - c.x, p.y - c.y);
+      await page.mouse.move(p.x, p.y);
+      await page.mouse.down();
+      for (let i = 1; i <= 24; i++) {
+        const angle = a + (i * 0.8) / 24;
+        await page.mouse.move(
+          c.x + Math.cos(angle) * r,
+          c.y + Math.sin(angle) * r,
+        );
+      }
+      await page.mouse.up();
+    }
+    await spinBearing();
+    await expect
+      .poll(async () => (await state()).repairStep, { timeout: 10000 })
+      .toBe(1);
+    await expect(page.locator(".bearing-lesson")).toHaveAttribute(
+      "data-phase",
+      "open",
+    );
+    p = await marker("bearing-plug");
+    await drag(p, { x: p.x + p.ax * 0.8, y: p.y + p.ay * 0.8 });
+    expect((await state()).repairStep).toBe(1);
+    p = await marker("bearing-plug");
+    await drag(p, { x: p.x + p.ax * 0.85, y: p.y + p.ay * 0.85 });
+    await expect.poll(async () => (await state()).repairStep).toBe(2);
+    await tool("润滑");
+    p = await marker("bearing-oil");
+    await page.mouse.click(p.x, p.y);
+    expect((await state()).repairStep).toBe(2);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.waitForTimeout(850);
+    await page.mouse.up();
+    await expect(page.locator(".mechanic-hud")).toContainText("挤压太久");
+    expect((await state()).repairStep).toBe(2);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.waitForTimeout(200);
+    await page.mouse.move(p.x + 30, p.y, { steps: 5 });
+    await page.mouse.up();
+    expect((await state()).repairStep).toBe(2);
+    await page.screenshot({
+      path: "artifacts/manual-bearing.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await page.waitForTimeout(200);
+    await page.locator(".scene-shell").scrollIntoViewIfNeeded();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(390);
+    p = await marker("bearing-oil");
+    expect(
+      await page.evaluate(
+        ({ x, y }) => document.elementFromPoint(x, y)?.tagName,
+        p,
+      ),
+    ).toBe("CANVAS");
+    await page.screenshot({
+      path: "artifacts/manual-bearing-mobile.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.waitForTimeout(200);
+    await page.locator(".scene-shell").scrollIntoViewIfNeeded();
+    await page.reload();
+    await expect.poll(async () => (await state()).repairStep).toBe(2);
+    await expect(page.locator(".bearing-lesson")).toHaveAttribute(
+      "data-phase",
+      "oil",
+    );
+    await tool("润滑");
+    p = await marker("bearing-oil");
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.down();
+    await page.waitForTimeout(250);
+    await page.mouse.up();
+    await expect.poll(async () => (await state()).repairStep).toBe(3);
+    expect((await state()).fixed).toBe(false);
+    await tool("拆装");
+    await page.getByRole("button", { name: /沿槽推入/ }).click();
+    p = await marker("bearing-plug");
+    await drag(p, { x: p.x + p.ax * 0.8, y: p.y + p.ay * 0.8 });
+    await expect(page.locator(".mechanic-hud")).toContainText("胶塞还没对孔");
+    await page.getByRole("button", { name: "平移对位", exact: true }).click();
+    for (let i = 0; i < 4; i++) {
+      p = await marker("bearing-plug");
+      const g = await marker("bearing-port");
+      await drag(p, { x: g.x - p.ax * 0.55, y: g.y - p.ay * 0.55 });
+    }
+    await expect(page.locator(".alignment-status.ready")).toBeVisible();
+    expect((await state()).fixed).toBe(false);
+    await page.getByRole("button", { name: /沿槽推入/ }).click();
+    p = await marker("bearing-plug");
+    await drag(p, { x: p.x + p.ax * 0.85, y: p.y + p.ay * 0.85 });
+    await expect(page.locator(".bearing-lesson")).toHaveAttribute(
+      "data-phase",
+      "after",
+    );
+    expect((await state()).fixed).toBe(false);
+    await page.screenshot({
+      path: "artifacts/manual-bearing-after.png",
+      fullPage: true,
+    });
+    await spinBearing();
+    await expect
+      .poll(async () => (await state()).fixed, { timeout: 10000 })
+      .toBe(true);
+    await page.getByRole("button", { name: "平移对位", exact: true }).click();
+    for (let i = 0; i < 4; i++) {
+      p = await marker("cover");
+      const g = await marker("cover-guide");
+      await drag(p, { x: g.x - p.ax, y: g.y - p.ay });
+    }
+    await expect(page.locator(".alignment-status.ready")).toBeVisible();
+    await page.getByRole("button", { name: /沿槽推入/ }).click();
+    p = await marker("cover");
+    await drag(p, { x: p.x + p.ax * 1.4, y: p.y + p.ay * 1.4 });
+    await expect.poll(async () => (await state()).panelOpen).toBe(false);
+    await tool("螺丝刀");
+    for (let i = 0; i < 4; i++) {
+      await turn(true);
+      await expect.poll(async () => (await state()).screws).toBe(i + 1);
+    }
+    await page.getByTestId("primary-action").click();
+    await page.getByTestId("primary-action").click();
+    await page.locator(".quiz-options button").nth(1).click();
+    await page.getByRole("button", { name: "学会了，准备交付" }).click();
+    await page.getByTestId("primary-action").click();
+    await expect.poll(async () => (await state()).delivered).toBe(true);
+    expect(errors).toEqual([]);
+    console.log(
+      "PASS fifth job: manual guard, dry spin and coast, rear plug extraction, reject quick/long/drifting oil, one short oil drop, explicit sealing and lubricated spin, reload, mobile and delivery",
     );
   }
 } catch (e) {

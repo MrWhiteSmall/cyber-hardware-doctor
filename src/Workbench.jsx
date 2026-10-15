@@ -3,8 +3,9 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RotateCcw, Maximize, MousePointer2 } from "lucide-react";
 import { parts, jobs, chapterOf } from "./game.js";
-import { createDirectPC } from "./DirectPC.js";
+import { createDirectPC, supportsDirectFan } from "./DirectPC.js";
 import { createStorageRig } from "./StorageRepair.js";
+import { createBearingRig } from "./BearingRepair.js";
 
 const anchors = {
   cooler: [-0.35, 3.65, 0.8],
@@ -359,6 +360,13 @@ function makeScene(host, onSelect, latest, labels) {
     fanRotor.add(leaf);
   }
   cylinder(fanRotor, 0.31, 0.13, [0, 0, 0.1], sage);
+  const bearingRig = createBearingRig({
+    parent: fanDevice,
+    rotor: fanRotor,
+    cylinder,
+    box,
+    materials: m,
+  });
   const fanCover = new THREE.Group();
   fanDevice.add(fanCover);
   for (let i = 1; i <= 6; i++) {
@@ -555,7 +563,12 @@ function makeScene(host, onSelect, latest, labels) {
     latches: ramLatches,
     dustPatches,
     storageRig,
-    fanRig: { cover: fanCover, screws: fanScrews, patches: fanPatches },
+    fanRig: {
+      cover: fanCover,
+      screws: fanScrews,
+      patches: fanPatches,
+      bearing: bearingRig,
+    },
     latest,
   });
   const ray = new THREE.Raycaster();
@@ -603,9 +616,11 @@ function makeScene(host, onSelect, latest, labels) {
   };
   renderer.domElement.addEventListener("pointerdown", pointerDown);
   renderer.domElement.addEventListener("pointerup", pointerUp);
-  let fanView = false;
+  let fanView = false,
+    bearingView = false;
   const focusFan = () => {
     fanView = true;
+    bearingView = false;
     controls.minDistance = 7;
     controls.maxDistance = 32;
     controls.target.set(-1.45, 2.9, 0.8);
@@ -621,12 +636,35 @@ function makeScene(host, onSelect, latest, labels) {
       );
     controls.update();
   };
+  const focusBearing = () => {
+    bearingView = true;
+    fanView = false;
+    controls.minDistance = 3;
+    controls.maxDistance = 32;
+    controls.target.set(0.15, 3.4, -0.5);
+    camera.position
+      .copy(controls.target)
+      .add(
+        new THREE.Vector3(-1.6, 0.65, -4.4)
+          .normalize()
+          .multiplyScalar(
+            Math.max(
+              4.8,
+              1 /
+                (camera.aspect *
+                  Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))),
+            ),
+          ),
+      );
+    controls.update();
+  };
   const resize = () => {
     const { width, height } = host.getBoundingClientRect();
     renderer.setSize(width, height);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     if (fanView) focusFan();
+    if (bearingView) focusBearing();
   };
   const observer = new ResizeObserver(resize);
   observer.observe(host);
@@ -656,7 +694,7 @@ function makeScene(host, onSelect, latest, labels) {
       0.09,
     );
     fanCover.visible = fanCover.position.x > -4.1;
-    if (!(latest.current.direct && game.jobId === "fan-dust"))
+    if (!(latest.current.direct && supportsDirectFan(game.jobId)))
       fanCover.position.z = 0;
     keyCover.position.y = THREE.MathUtils.lerp(
       keyCover.position.y,
@@ -668,7 +706,7 @@ function makeScene(host, onSelect, latest, labels) {
     if (latest.current.direct && game.jobId === "fan-dust" && game.unplugged)
       fanRotor.rotation.z = 0;
     fanDust.visible = game.jobId === "fan-dust" && !game.fixed;
-    if (!(latest.current.direct && game.jobId === "fan-dust")) {
+    if (!(latest.current.direct && supportsDirectFan(game.jobId))) {
       fanScrews.forEach((s, i) => {
         s.visible = i < game.screws;
       });
@@ -719,7 +757,9 @@ function makeScene(host, onSelect, latest, labels) {
       });
     if (game.selected && open) {
       selection.box.setFromObject(groups[game.selected]);
-      selection.visible = !(latest.current.direct && game.jobId === "fan-dust");
+      selection.visible = !(
+        latest.current.direct && supportsDirectFan(game.jobId)
+      );
     } else selection.visible = false;
     controls.update();
     direct.update(time);
@@ -744,6 +784,7 @@ function makeScene(host, onSelect, latest, labels) {
     nudgePart: (dx, dy) => direct.nudge(dx, dy),
     focusMemory: () => {
       fanView = false;
+      bearingView = false;
       controls.minDistance = 7;
       controls.target.set(0.67, 3.65, 0.8);
       camera.position.copy(controls.target).add(new THREE.Vector3(3.2, 1.2, 7));
@@ -751,6 +792,7 @@ function makeScene(host, onSelect, latest, labels) {
     },
     focusCooler: () => {
       fanView = false;
+      bearingView = false;
       controls.minDistance = 7;
       controls.target.set(-0.35, 3.65, 0.5);
       camera.position.copy(controls.target).add(new THREE.Vector3(2.5, 0.8, 7));
@@ -758,6 +800,7 @@ function makeScene(host, onSelect, latest, labels) {
     },
     focusStorage: () => {
       fanView = false;
+      bearingView = false;
       controls.minDistance = 3;
       controls.target.set(-0.05, 1.35, 0.1);
       camera.position
@@ -766,12 +809,14 @@ function makeScene(host, onSelect, latest, labels) {
       controls.update();
     },
     focusFan,
+    focusBearing,
     reset: () => {
-      if (latest.current.game.jobId === "fan-dust") {
+      if (supportsDirectFan(latest.current.game.jobId)) {
         focusFan();
         return;
       }
       fanView = false;
+      bearingView = false;
       controls.maxDistance = 18;
       controls.minDistance = 7;
       camera.position.copy(home);
@@ -818,7 +863,16 @@ export default function Workbench({
   const [error, setError] = useState(false);
   const [hud, setHud] = useState(null),
     [pushMode, setPushMode] = useState(false);
-  latest.current = { game, act, exploded, direct, pushMode, onHud: setHud };
+  latest.current = {
+    game,
+    act,
+    exploded,
+    direct,
+    pushMode,
+    onHud: setHud,
+    focusFan: () => api.current?.focusFan(),
+    focusBearing: () => api.current?.focusBearing(),
+  };
   useEffect(() => {
     setPushMode(
       direct &&
@@ -834,6 +888,15 @@ export default function Workbench({
   useEffect(() => {
     api.current?.reset();
   }, [game.jobId]);
+  useEffect(() => {
+    if (
+      direct &&
+      game.jobId === "fan-bearing" &&
+      !game.fixed &&
+      game.repairStep >= 1
+    )
+      api.current?.focusBearing();
+  }, [direct, game.jobId, game.repairStep, game.fixed]);
   useEffect(() => {
     if (
       direct &&
@@ -860,7 +923,15 @@ export default function Workbench({
         latest,
         labels,
       );
-      if (latest.current.game.jobId === "fan-dust") api.current.focusFan();
+      if (supportsDirectFan(latest.current.game.jobId)) {
+        if (
+          latest.current.game.jobId === "fan-bearing" &&
+          latest.current.game.repairStep >= 1 &&
+          !latest.current.game.fixed
+        )
+          api.current.focusBearing();
+        else api.current.focusFan();
+      }
     } catch (e) {
       console.error(e);
       setError(true);
@@ -889,7 +960,7 @@ export default function Workbench({
                     x2={hud.targets[1].x}
                     y2={hud.targets[1].y}
                   />
-                  {!hud.storage && !hud.fanGuard && (
+                  {!hud.storage && !hud.fanGuard && !hud.bearing && (
                     <polygon points={hud.alignmentZone} />
                   )}
                 </svg>
@@ -916,22 +987,29 @@ export default function Workbench({
                       {target.guide ? "机身定位柱 · 固定" : "护网 · 握住移动"}
                     </small>
                   )}
+                  {hud.bearing && hud.canPush && (
+                    <small className="connector-marker-label">
+                      {target.guide ? "注油孔 · 固定" : "胶塞 · 握住移动"}
+                    </small>
+                  )}
                   <i>
                     {target.cleared
                       ? "✓"
                       : target.id.startsWith("dust")
                         ? "·"
-                        : target.id === "fan-hold"
-                          ? "☝"
-                          : target.guide
-                            ? "+"
-                            : target.id === "screw"
-                              ? hud.action === "unscrew"
-                                ? "↺"
-                                : "↻"
-                              : target.id.startsWith("latch")
-                                ? "↕"
-                                : "✥"}
+                        : target.id === "bearing-spin"
+                          ? "↻"
+                          : target.id === "fan-hold"
+                            ? "☝"
+                            : target.guide
+                              ? "+"
+                              : target.id === "screw"
+                                ? hud.action === "unscrew"
+                                  ? "↺"
+                                  : "↻"
+                                : target.id.startsWith("latch")
+                                  ? "↕"
+                                  : "✥"}
                   </i>
                   {target.axis && (
                     <span
@@ -975,20 +1053,28 @@ export default function Workbench({
                 ? hud.step === 0
                   ? "固定风扇叶片"
                   : `积灰清理 ${hud.cleaned} / ${hud.total}`
-                : hud.fanGuard
-                  ? hud.canPush
-                    ? `护网复装 · ${hud.aligned ? "螺孔已对齐" : "先平移对孔"}`
-                    : "拉出并移开前护网"
-                  : hud.storage
-                    ? {
-                        power: "检查供电接头",
-                        release: "按锁扣并拔出数据接头",
-                        insert: "对位并手动推入",
-                        verify: "轻拉确认锁扣固定",
-                      }[hud.storagePhase]
-                    : hud.canPush
-                      ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
-                      : "沿结构操作"}
+                : hud.bearing
+                  ? {
+                      before: "润滑前 · 轻拨检查阻力",
+                      open: "背面检修窗口 · 拔出胶塞",
+                      oil: "注油孔 · 少量点涂",
+                      seal: "胶塞对孔 · 手动压回",
+                      after: "润滑后 · 再次轻拨复查",
+                    }[hud.bearingPhase]
+                  : hud.fanGuard
+                    ? hud.canPush
+                      ? `护网复装 · ${hud.aligned ? "螺孔已对齐" : "先平移对孔"}`
+                      : "拉出并移开前护网"
+                    : hud.storage
+                      ? {
+                          power: "检查供电接头",
+                          release: "按锁扣并拔出数据接头",
+                          insert: "对位并手动推入",
+                          verify: "轻拉确认锁扣固定",
+                        }[hud.storagePhase]
+                      : hud.canPush
+                        ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
+                        : "沿结构操作"}
           </span>
           <p>{hud.instruction}</p>
           <div className="mechanic-progress">
@@ -1032,6 +1118,26 @@ export default function Workbench({
               <small>先轴向脱开，再移到旁边；复装需对孔后主动推入</small>
             </div>
           )}
+          {hud.bearing && (
+            <div className="bearing-lesson" data-phase={hud.bearingPhase}>
+              <div className="mechanic-buttons">
+                <button onClick={() => api.current?.focusBearing()}>
+                  轴承背面
+                </button>
+                <button onClick={() => api.current?.focusFan()}>
+                  风扇正面
+                </button>
+                <small>
+                  {["seal", "after"].includes(hud.bearingPhase)
+                    ? "少量点涂已完成 · 仍需密封与转动复查"
+                    : "本教学型号可维护 · 密封轴承不可直接套用"}
+                </small>
+              </div>
+              <p>
+                润滑前：轻拨后很快停下。润滑后：以相同轻拨强度比较，叶片应继续转动。短按时长仅是游戏操作，用油种类与用量应遵循具体型号说明。
+              </p>
+            </div>
+          )}
           {hud.cleaning && (
             <div className="mechanic-buttons">
               <button
@@ -1057,16 +1163,22 @@ export default function Workbench({
                     ? hud.positionAligned
                       ? "✓ 螺孔对准"
                       : "○ 螺孔需微调"
-                    : hud.positionAligned
-                      ? "✓ 位置对准"
-                      : "○ 位置需微调"}
+                    : hud.bearing
+                      ? hud.positionAligned
+                        ? "✓ 胶塞对孔"
+                        : "○ 胶塞需微调"
+                      : hud.positionAligned
+                        ? "✓ 位置对准"
+                        : "○ 位置需微调"}
                 </span>
                 <span>
                   {hud.fanGuard
                     ? "✓ 保持护网朝向"
-                    : hud.directionAligned
-                      ? "✓ 缺口方向正确"
-                      : "○ 按 R 检查方向"}
+                    : hud.bearing
+                      ? "✓ 保持胶塞朝向"
+                      : hud.directionAligned
+                        ? "✓ 缺口方向正确"
+                        : "○ 按 R 检查方向"}
                 </span>
                 <span>仍需手动推到底</span>
               </div>
@@ -1086,7 +1198,7 @@ export default function Workbench({
                 >
                   平移对位
                 </button>
-                {hud.action === "repair" && (
+                {hud.action === "repair" && !hud.bearing && (
                   <button onClick={() => api.current?.rotatePart()}>
                     旋转 90° <small>R</small>
                   </button>
@@ -1113,7 +1225,7 @@ export default function Workbench({
                   </button>
                 ))}
                 <small>也可用键盘方向键</small>
-                {hud.action === "repair" && (
+                {hud.action === "repair" && !hud.bearing && (
                   <button
                     className="memory-focus"
                     onClick={() =>

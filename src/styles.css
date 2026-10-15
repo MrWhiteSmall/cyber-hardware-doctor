@@ -3531,6 +3531,12 @@ h1 > span {
   margin-top: 9px;
   pointer-events: auto;
 }
+.bearing-lesson > p {
+  font-size: 10px;
+  line-height: 1.7;
+  color: #77846b;
+  margin: 8px 0 0;
+}
 .connector-lesson > div {
   display: flex;
   align-items: center;

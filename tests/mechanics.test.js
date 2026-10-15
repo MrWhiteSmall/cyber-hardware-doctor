@@ -8,12 +8,20 @@ import {
   TAU,
   validAirPuff,
   pullConnector,
+  bearingCoast,
+  validOilDrop,
 } from "../src/mechanics.js";
 import { isDirectAction, supportsDirectJob } from "../src/DirectPC.js";
 import { createGame } from "../src/game.js";
 
-test("前四关的拆装必须在手动模式操作，其余工单仍标为辅助教学", () => {
-  for (const id of ["memory", "cooling", "storage", "fan-dust"]) {
+test("前五关的拆装必须在手动模式操作，其余工单仍标为辅助教学", () => {
+  for (const id of [
+    "memory",
+    "cooling",
+    "storage",
+    "fan-dust",
+    "fan-bearing",
+  ]) {
     assert.equal(supportsDirectJob(id), true);
     const s = { ...createGame(id), unplugged: true, grounded: true };
     assert.equal(isDirectAction(s), true, "螺丝步骤不能点按钮跳过");
@@ -29,14 +37,38 @@ test("前四关的拆装必须在手动模式操作，其余工单仍标为辅�
               ? "cooler"
               : id === "storage"
                 ? "storage"
-                : "fanBlade",
+                : id === "fan-dust"
+                  ? "fanBlade"
+                  : "fanMotor",
         ],
       }),
       true,
     );
     assert.equal(isDirectAction(createGame(id)), false, "安全准备保留界面操作");
   }
-  assert.equal(supportsDirectJob("fan-bearing"), false);
+  assert.equal(supportsDirectJob("fan-cable"), false);
+});
+
+test("同样轻拨时润滑后的阻力更小，惯性计算不受帧率影响", () => {
+  const dry = bearingCoast(3, 1.5, false),
+    oiled = bearingCoast(3, 1.5, true);
+  assert.ok(oiled.rotation > dry.rotation * 5);
+  assert.ok(oiled.velocity > dry.velocity);
+  let v = 3,
+    rotation = 0;
+  for (let i = 0; i < 150; i++) {
+    const next = bearingCoast(v, 0.01, true);
+    v = next.velocity;
+    rotation += next.rotation;
+  }
+  assert.ok(Math.abs(rotation - oiled.rotation) < 1e-9);
+  assert.equal(bearingCoast(3, 0, true).rotation, 0);
+});
+test("注油只接受稳定的短按，长挤、轻点即走和偏离孔位都不计入", () => {
+  assert.equal(validOilDrop(250, 5), true);
+  assert.equal(validOilDrop(40, 0), false);
+  assert.equal(validOilDrop(900, 0), false);
+  assert.equal(validOilDrop(250, 25), false);
 });
 
 test("带锁扣的数据接头要保持释放才能拔出，反向移动不能拔出", () => {
