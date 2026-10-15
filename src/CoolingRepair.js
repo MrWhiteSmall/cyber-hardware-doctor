@@ -8,6 +8,9 @@ export function createCoolingRepair({
   target,
   planePoint,
   latest,
+  jobId = "cooling",
+  partId = "cooler",
+  holdPoint = new THREE.Vector3(-0.35, 3.97, 0.74),
 }) {
   let gesture = null,
     note = "",
@@ -28,7 +31,7 @@ export function createCoolingRepair({
     finger.position.set(x, 0, 0);
     hand.add(finger);
   }
-  hand.position.set(-0.35, 3.97, 0.76);
+  hand.position.copy(holdPoint).add(new THREE.Vector3(0, 0, 0.02));
   scene.add(hand);
   const blower = new THREE.Group();
   const bulb = new THREE.Mesh(
@@ -63,25 +66,21 @@ export function createCoolingRepair({
     return (
       enabled &&
       !game.fixed &&
-      game.inspected.includes("cooler") &&
+      game.inspected.includes(partId) &&
       game.panelOpen
     );
   }
   return {
     targets(game) {
       if (game.repairStep === 0)
-        return [
-          target(
-            "fan-hold",
-            new THREE.Vector3(-0.35, 3.97, 0.74),
-            "长按固定叶片",
-          ),
-        ];
+        return [target("fan-hold", holdPoint, "长按固定叶片")];
       return patches.map((patch, i) => ({
         ...target(
           `dust${i}`,
           patch.getWorldPosition(new THREE.Vector3()),
-          cleaned.has(i) ? "此处已清洁" : "对准这里，短按气吹",
+          cleaned.has(i)
+            ? "此处已清洁"
+            : `${patch.userData.zone || "积灰"}：对准这里，短按气吹`,
         ),
         guide: cleaned.has(i),
         cleared: cleaned.has(i),
@@ -132,7 +131,7 @@ export function createCoolingRepair({
       return cleaned.size === patches.length;
     },
     update(game, direct) {
-      const nextEnabled = direct && game.jobId === "cooling";
+      const nextEnabled = direct && game.jobId === jobId;
       const nextPhase = `${nextEnabled}:${game.repairStep}:${game.fixed}`;
       if (phase !== nextPhase) {
         phase = nextPhase;
@@ -158,14 +157,22 @@ export function createCoolingRepair({
         });
       else
         patches.forEach((patch) => {
-          patch.visible = true;
+          patch.visible = game.jobId === jobId && !game.fixed;
         });
       if (blower.visible) {
-        const aim = pointer && planePoint(pointer, 0.74);
+        const aimedPatch =
+          gesture?.id.startsWith("dust") &&
+          patches[Number(gesture.id.slice(4))];
+        const depth = aimedPatch
+          ? aimedPatch.getWorldPosition(new THREE.Vector3()).z
+          : holdPoint.z;
+        const aim = pointer && planePoint(pointer, depth);
         blower.position.copy(
           aim ||
-            patches.find((_, i) => !cleaned.has(i))?.position ||
-            new THREE.Vector3(-0.35, 3.65, 0.74),
+            patches
+              .find((_, i) => !cleaned.has(i))
+              ?.getWorldPosition(new THREE.Vector3()) ||
+            holdPoint,
         );
         const puffing = gesture && performance.now() - gesture.startTime < 900;
         jet.visible = Boolean(puffing);
@@ -176,6 +183,16 @@ export function createCoolingRepair({
       const holding = game.repairStep === 0;
       return {
         cleaning: true,
+        cleaningKind: jobId === "fan-dust" ? "fan" : "pc",
+        zones:
+          jobId === "fan-dust"
+            ? ["护网", "叶片"]
+                .map(
+                  (zone) =>
+                    `${zone} ${patches.filter((p, i) => p.userData.zone === zone && cleaned.has(i)).length} / ${patches.filter((p) => p.userData.zone === zone).length}`,
+                )
+                .join(" · ")
+            : "",
         cleaned: cleaned.size,
         total: patches.length,
         progress: holding

@@ -615,7 +615,7 @@ export function createGame(jobId = "memory") {
 export function objective(s) {
   const job = jobs.find((j) => j.id === s.jobId);
   const pc = job.chapter === "pc",
-    cover = pc ? "机箱侧板" : "设备外壳";
+    cover = pc ? "机箱侧板" : job.chapter === "fan" ? "风扇前护网" : "设备外壳";
   if (s.delivered)
     return {
       text: "工单已完成，去看看下一位客人吧",
@@ -653,7 +653,7 @@ export function objective(s) {
     };
   if (!s.fixed && s.screws > 0)
     return {
-      text: `卸下外壳的固定螺丝，还剩 ${s.screws} 颗`,
+      text: `卸下${cover}的固定螺丝，还剩 ${s.screws} 颗`,
       action: "unscrew",
       label: "卸下一颗螺丝",
       tool: "driver",

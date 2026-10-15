@@ -12,8 +12,8 @@ import {
 import { isDirectAction, supportsDirectJob } from "../src/DirectPC.js";
 import { createGame } from "../src/game.js";
 
-test("电脑三关的拆装必须在手动模式操作，其余章节仍标为辅助教学", () => {
-  for (const id of ["memory", "cooling", "storage"]) {
+test("前四关的拆装必须在手动模式操作，其余工单仍标为辅助教学", () => {
+  for (const id of ["memory", "cooling", "storage", "fan-dust"]) {
     assert.equal(supportsDirectJob(id), true);
     const s = { ...createGame(id), unplugged: true, grounded: true };
     assert.equal(isDirectAction(s), true, "螺丝步骤不能点按钮跳过");
@@ -23,14 +23,20 @@ test("电脑三关的拆装必须在手动模式操作，其余章节仍标为�
         screws: 0,
         panelOpen: true,
         inspected: [
-          id === "memory" ? "ram" : id === "cooling" ? "cooler" : "storage",
+          id === "memory"
+            ? "ram"
+            : id === "cooling"
+              ? "cooler"
+              : id === "storage"
+                ? "storage"
+                : "fanBlade",
         ],
       }),
       true,
     );
     assert.equal(isDirectAction(createGame(id)), false, "安全准备保留界面操作");
   }
-  assert.equal(supportsDirectJob("fan-dust"), false);
+  assert.equal(supportsDirectJob("fan-bearing"), false);
 });
 
 test("带锁扣的数据接头要保持释放才能拔出，反向移动不能拔出", () => {

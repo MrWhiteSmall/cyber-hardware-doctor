@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { objective, tools } from "./game.js";
 import { createCoolingRepair } from "./CoolingRepair.js";
 import { createStorageRepair } from "./StorageRepair.js";
+import { createFanRepair } from "./FanRepair.js";
 import {
   TAU,
   ALIGNMENT_TOLERANCE,
@@ -12,7 +13,7 @@ import {
 } from "./mechanics.js";
 
 export const supportsDirectJob = (id) =>
-  ["memory", "cooling", "storage"].includes(id);
+  ["memory", "cooling", "storage", "fan-dust"].includes(id);
 export const isDirectAction = (game) =>
   supportsDirectJob(game.jobId) &&
   ["unscrew", "screw", "open", "close", "repair"].includes(
@@ -31,6 +32,7 @@ export function createDirectPC({
   latches,
   dustPatches,
   storageRig,
+  fanRig,
   latest,
 }) {
   let key = "",
@@ -125,18 +127,31 @@ export function createDirectPC({
     planePoint,
     latest,
   });
+  const fanGuard = createFanRepair({ rig: fanRig, target, planePoint, latest });
+  const fanCleaning = createCoolingRepair({
+    scene,
+    patches: fanRig.patches,
+    target,
+    planePoint,
+    latest,
+    jobId: "fan-dust",
+    partId: "fanBlade",
+    holdPoint: new THREE.Vector3(0.3, 3.97, 0.76),
+  });
   function targets(game, goal) {
     if (goal.action === "unscrew" || goal.action === "screw") {
+      const deviceScrews = game.jobId === "fan-dust" ? fanRig.screws : screws;
       const index = goal.action === "unscrew" ? game.screws - 1 : game.screws;
       return [
         target(
           "screw",
-          screws[index].getWorldPosition(new THREE.Vector3()),
+          deviceScrews[index].getWorldPosition(new THREE.Vector3()),
           goal.action === "screw" ? "顺时针旋紧" : "逆时针旋松",
         ),
       ];
     }
     if (goal.action === "open" || goal.action === "close") {
+      if (game.jobId === "fan-dust") return fanGuard.targets(game, goal);
       const result = [
         target(
           "cover",
@@ -166,6 +181,8 @@ export function createDirectPC({
       return cooling.targets(game);
     if (goal.action === "repair" && game.jobId === "storage")
       return storage.targets(game);
+    if (goal.action === "repair" && game.jobId === "fan-dust")
+      return fanCleaning.targets(game);
     if (
       goal.action === "repair" &&
       (game.repairStep === 0 || game.repairStep === 3)
@@ -237,16 +254,23 @@ export function createDirectPC({
     if (goal.action === "repair")
       latest.current.act(
         "select",
-        game.jobId === "cooling"
-          ? "cooler"
-          : game.jobId === "storage"
-            ? "storage"
-            : "ram",
+        game.jobId === "fan-dust"
+          ? "fanBlade"
+          : game.jobId === "cooling"
+            ? "cooler"
+            : game.jobId === "storage"
+              ? "storage"
+              : "ram",
       );
     if (game.jobId === "cooling" && goal.action === "repair")
       cooling.begin(hit, point);
     if (game.jobId === "storage" && goal.action === "repair")
       storage.begin(hit, point);
+    if (game.jobId === "fan-dust") {
+      if (goal.action === "repair") fanCleaning.begin(hit, point);
+      else if (["open", "close"].includes(goal.action))
+        fanGuard.begin(hit, point);
+    }
     const objectPose = hit.id === "cover" ? cover : pose;
     gesture = {
       id: hit.id,
@@ -265,6 +289,8 @@ export function createDirectPC({
   function move(e) {
     if (active && latest.current.game.jobId === "cooling")
       cooling.hover(local(e));
+    if (active && latest.current.game.jobId === "fan-dust")
+      fanCleaning.hover(local(e));
     if (!gesture) return;
     e.stopImmediatePropagation();
     e.preventDefault();
@@ -272,7 +298,14 @@ export function createDirectPC({
       goal = objective(game),
       point = local(e),
       g = gesture;
-    if (game.jobId === "cooling" && goal.action === "repair") {
+    if (game.jobId === "fan-dust" && goal.action === "repair") {
+      fanCleaning.move(point);
+    } else if (
+      game.jobId === "fan-dust" &&
+      ["open", "close"].includes(goal.action)
+    ) {
+      fanGuard.move(point, e.shiftKey);
+    } else if (game.jobId === "cooling" && goal.action === "repair") {
       cooling.move(point);
     } else if (game.jobId === "storage" && goal.action === "repair") {
       storage.move(point, e.shiftKey);
@@ -366,6 +399,15 @@ export function createDirectPC({
     controls.enabled = true;
     if (canvas.hasPointerCapture(e.pointerId))
       canvas.releasePointerCapture(e.pointerId);
+    if (
+      game.jobId === "fan-dust" &&
+      ["repair", "open", "close"].includes(goal.action)
+    ) {
+      const helper = goal.action === "repair" ? fanCleaning : fanGuard;
+      if (helper.finish(e.type === "pointercancel"))
+        latest.current.act(goal.action);
+      return;
+    }
     if (game.jobId === "cooling" && goal.action === "repair") {
       if (cooling.finish(e.type === "pointercancel"))
         latest.current.act("repair");
@@ -414,6 +456,10 @@ export function createDirectPC({
     if (!active || gesture) return;
     const game = latest.current.game,
       goal = objective(game);
+    if (game.jobId === "fan-dust") {
+      fanGuard.nudge(dx, dy);
+      return;
+    }
     if (game.jobId === "storage" && goal.action === "repair") {
       storage.nudge(dx, dy);
       return;
@@ -529,7 +575,7 @@ export function createDirectPC({
             : [false, false];
         angle = 0;
       }
-      if (enabled) {
+      if (enabled && game.jobId !== "fan-dust") {
         panel.position.set(cover.x, cover.y, cover.z);
         panel.rotation.y = 0;
         panel.visible = true;
@@ -545,22 +591,25 @@ export function createDirectPC({
             (latchOpen[i] ? (i === 0 ? -0.22 : 0.22) : 0);
           l.rotation.z = latchOpen[i] ? (i === 0 ? -0.6 : 0.6) : 0;
         });
-        screws.forEach((s, i) => {
+      }
+      if (enabled) {
+        const deviceScrews = game.jobId === "fan-dust" ? fanRig.screws : screws;
+        deviceScrews.forEach((s, i) => {
           s.visible =
             i < game.screws || (goal.action === "screw" && i === game.screws);
         });
         if (goal.action === "screw" || goal.action === "unscrew") {
           const index = goal.action === "screw" ? game.screws : game.screws - 1;
-          screws[index].rotation.z = progress;
-          screws[index].position.z =
-            1.28 +
+          deviceScrews[index].rotation.z = progress;
+          deviceScrews[index].position.z =
+            (game.jobId === "fan-dust" ? 1.1 : 1.28) +
             (goal.action === "unscrew"
               ? progress / (TAU * 2)
               : 1 - progress / (TAU * 2)) *
               0.1;
           if (game.tool === "driver") {
             tool.position.copy(
-              screws[index].getWorldPosition(new THREE.Vector3()),
+              deviceScrews[index].getWorldPosition(new THREE.Vector3()),
             );
             tool.rotation.z = progress;
             tool.visible = true;
@@ -575,6 +624,8 @@ export function createDirectPC({
       latches.forEach((l) => l.updateMatrixWorld(true));
       cooling.update(game, enabled);
       storage.update(game, enabled);
+      fanGuard.update(game, enabled);
+      fanCleaning.update(game, enabled);
       currentTargets = active ? targets(game, goal) : [];
       if (time - lastHud > 70) {
         lastHud = time;
@@ -656,6 +707,19 @@ export function createDirectPC({
                       ...(note ? { instruction: note } : {}),
                     }
                   : {}),
+                ...(game.jobId === "fan-dust" && goal.action === "repair"
+                  ? {
+                      ...fanCleaning.hud(game),
+                      ...(note ? { instruction: note } : {}),
+                    }
+                  : {}),
+                ...(game.jobId === "fan-dust" &&
+                ["open", "close"].includes(goal.action)
+                  ? {
+                      ...fanGuard.hud(game, goal),
+                      ...(note ? { instruction: note } : {}),
+                    }
+                  : {}),
               }
             : null,
         );
@@ -668,6 +732,7 @@ export function createDirectPC({
     nudge,
     dispose: () => {
       cooling.dispose();
+      fanCleaning.dispose();
       canvas.removeEventListener("pointerdown", begin, true);
       canvas.removeEventListener("pointermove", move, true);
       canvas.removeEventListener("pointerup", finish, true);
