@@ -304,8 +304,11 @@ const repairPlans = {
     { text: "使用气吹，短促吹走鳍片里的积灰", tool: "air" },
   ],
   storage: [
-    { text: "检查 SATA 供电线是否牢固", tool: "hand" },
-    { text: "对齐 L 形缺口，插稳 SATA 数据线", tool: "cable" },
+    { text: "轻推较宽的 SATA 供电接头，确认已经到位", tool: "hand" },
+    {
+      text: "按锁扣取出松动的数据接头，对齐 L 形缺口插稳，再轻拉检查",
+      tool: "cable",
+    },
   ],
 };
 jobs.forEach((j, i) =>

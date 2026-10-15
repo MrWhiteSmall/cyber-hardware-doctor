@@ -7,12 +7,13 @@ import {
   pushPart,
   TAU,
   validAirPuff,
+  pullConnector,
 } from "../src/mechanics.js";
 import { isDirectAction, supportsDirectJob } from "../src/DirectPC.js";
 import { createGame } from "../src/game.js";
 
-test("电脑前两关的拆装必须在手动模式操作，其余关卡仍标为辅助教学", () => {
-  for (const id of ["memory", "cooling"]) {
+test("电脑三关的拆装必须在手动模式操作，其余章节仍标为辅助教学", () => {
+  for (const id of ["memory", "cooling", "storage"]) {
     assert.equal(supportsDirectJob(id), true);
     const s = { ...createGame(id), unplugged: true, grounded: true };
     assert.equal(isDirectAction(s), true, "螺丝步骤不能点按钮跳过");
@@ -21,13 +22,25 @@ test("电脑前两关的拆装必须在手动模式操作，其余关卡仍标�
         ...s,
         screws: 0,
         panelOpen: true,
-        inspected: [id === "memory" ? "ram" : "cooler"],
+        inspected: [
+          id === "memory" ? "ram" : id === "cooling" ? "cooler" : "storage",
+        ],
       }),
       true,
     );
     assert.equal(isDirectAction(createGame(id)), false, "安全准备保留界面操作");
   }
-  assert.equal(supportsDirectJob("storage"), false);
+  assert.equal(supportsDirectJob("fan-dust"), false);
+});
+
+test("带锁扣的数据接头要保持释放才能拔出，反向移动不能拔出", () => {
+  const p = { x: 0, y: 0, z: 0.14 };
+  assert.equal(pullConnector(p, 2, false).blocked, true);
+  assert.equal(pullConnector(p, 2, false).z, 0.14);
+  assert.equal(pullConnector(p, -2, true).extracted, false);
+  assert.equal(pullConnector(p, 0.2, true).extracted, false);
+  assert.equal(pullConnector(p, 1, true).extracted, true);
+  assert.equal(p.z, 0.14);
 });
 
 test("气吹需要稳定瞄准与短促按压，连吹和滑离目标不能清灰", () => {

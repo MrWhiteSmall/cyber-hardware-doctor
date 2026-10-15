@@ -1,6 +1,18 @@
 export const TAU = Math.PI * 2;
 export const ALIGNMENT_TOLERANCE = 0.12;
 export const FAN_HOLD_MS = 650;
+export const CONNECTOR_RELEASE_MS = 400;
+export const CONNECTOR_OUT_DEPTH = 0.9;
+export function pullConnector(position, distance, releaseHeld) {
+  if (!releaseHeld) return { ...position, blocked: true, extracted: false };
+  const z = Math.min(CONNECTOR_OUT_DEPTH, position.z + Math.max(0, distance));
+  return {
+    ...position,
+    z,
+    blocked: false,
+    extracted: z >= CONNECTOR_OUT_DEPTH,
+  };
+}
 export function validAirPuff(duration, drift) {
   return duration >= 120 && duration <= 900 && drift <= 22;
 }

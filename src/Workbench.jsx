@@ -4,6 +4,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RotateCcw, Maximize, MousePointer2 } from "lucide-react";
 import { parts, jobs, chapterOf } from "./game.js";
 import { createDirectPC } from "./DirectPC.js";
+import { createStorageRig } from "./StorageRepair.js";
 
 const anchors = {
   cooler: [-0.35, 3.65, 0.8],
@@ -238,7 +239,7 @@ function makeScene(host, onSelect, latest, labels) {
   box(storage, [1, 0.64, 0.18], [-0.82, 1.28, -0.03], m.dark);
   box(storage, [0.76, 0.4, 0.015], [-0.82, 1.28, 0.069], material("#d8dbcd"));
   text(storage, "SSD / 512", [-0.82, 1.28, 0.085], 0.13, "#344a48");
-  box(storage, [0.12, 0.13, 0.08], [-0.27, 1.23, 0], m.orange);
+  const storageRig = createStorageRig({ storage, box, line, materials: m });
   const psu = part("psu");
   box(psu, [3.13, 0.81, 1.8], [0, 0.56, 0.1], m.dark);
   text(psu, "450 W", [-0.77, 0.58, 1.012], 0.22);
@@ -527,6 +528,7 @@ function makeScene(host, onSelect, latest, labels) {
     ram,
     latches: ramLatches,
     dustPatches,
+    storageRig,
     latest,
   });
   const ray = new THREE.Raycaster();
@@ -648,7 +650,7 @@ function makeScene(host, onSelect, latest, labels) {
       game.jobId === "memory" && !game.fixed ? -0.045 : 0,
       0.08,
     );
-    sata.visible = game.jobId !== "storage" || game.fixed;
+    sata.visible = game.jobId !== "storage";
     dust.visible = game.jobId === "cooling" && !game.fixed;
     if (
       !game.unplugged &&
@@ -683,16 +685,27 @@ function makeScene(host, onSelect, latest, labels) {
     rotatePart: () => direct.rotate(),
     nudgePart: (dx, dy) => direct.nudge(dx, dy),
     focusMemory: () => {
+      controls.minDistance = 7;
       controls.target.set(0.67, 3.65, 0.8);
       camera.position.copy(controls.target).add(new THREE.Vector3(3.2, 1.2, 7));
       controls.update();
     },
     focusCooler: () => {
+      controls.minDistance = 7;
       controls.target.set(-0.35, 3.65, 0.5);
       camera.position.copy(controls.target).add(new THREE.Vector3(2.5, 0.8, 7));
       controls.update();
     },
+    focusStorage: () => {
+      controls.minDistance = 3;
+      controls.target.set(-0.05, 1.35, 0.1);
+      camera.position
+        .copy(controls.target)
+        .add(new THREE.Vector3(1.2, 0.55, 3));
+      controls.update();
+    },
     reset: () => {
+      controls.minDistance = 7;
       camera.position.copy(home);
       controls.target.set(0, 2.55, 0);
       controls.update();
@@ -740,13 +753,19 @@ export default function Workbench({
   latest.current = { game, act, exploded, direct, pushMode, onHud: setHud };
   useEffect(() => {
     setPushMode(
-      direct && game.jobId === "memory" && game.repairStep === 2 && !game.fixed,
+      direct &&
+        !game.fixed &&
+        ((game.jobId === "memory" && game.repairStep === 2) ||
+          (game.jobId === "storage" && game.repairStep === 1)),
     );
   }, [direct, game.jobId, game.repairStep, game.panelOpen, game.fixed]);
   useEffect(() => {
-    // Return from the RAM close-up so the removed side panel is reachable again.
+    // Return from a repair close-up so the removed side panel is reachable again.
     if (direct && game.fixed) api.current?.reset();
   }, [direct, game.fixed]);
+  useEffect(() => {
+    api.current?.reset();
+  }, [game.jobId]);
   useEffect(() => {
     if (
       direct &&
@@ -755,6 +774,15 @@ export default function Workbench({
       !game.fixed
     )
       api.current?.focusCooler();
+  }, [direct, game.jobId, game.inspected.length, game.fixed]);
+  useEffect(() => {
+    if (
+      direct &&
+      game.jobId === "storage" &&
+      game.inspected.includes("storage") &&
+      !game.fixed
+    )
+      api.current?.focusStorage();
   }, [direct, game.jobId, game.inspected.length, game.fixed]);
   useEffect(() => {
     try {
@@ -866,14 +894,48 @@ export default function Workbench({
                 ? hud.step === 0
                   ? "固定风扇叶片"
                   : `积灰清理 ${hud.cleaned} / ${hud.total}`
-                : hud.canPush
-                  ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
-                  : "沿结构操作"}
+                : hud.storage
+                  ? {
+                      power: "检查供电接头",
+                      release: "按锁扣并拔出数据接头",
+                      insert: "对位并手动推入",
+                      verify: "轻拉确认锁扣固定",
+                    }[hud.storagePhase]
+                  : hud.canPush
+                    ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
+                    : "沿结构操作"}
           </span>
           <p>{hud.instruction}</p>
           <div className="mechanic-progress">
             <i style={{ width: `${Math.min(100, hud.progress * 100)}%` }} />
           </div>
+          {hud.storage && (
+            <div className="connector-lesson" data-phase={hud.storagePhase}>
+              <div
+                className={
+                  hud.storagePhase === "power" ? "current" : "verified"
+                }
+              >
+                <svg viewBox="0 0 110 30" aria-hidden="true">
+                  <path d="M7 7H100V14H14V25H7Z" />
+                </svg>
+                <span>
+                  15 针供电 <small>提供电力</small>
+                </span>
+              </div>
+              <div className={hud.storagePhase === "power" ? "" : "current"}>
+                <svg viewBox="0 0 110 30" aria-hidden="true">
+                  <path d="M30 7H80V14H37V25H30Z" />
+                </svg>
+                <span>
+                  7 针数据 <small>连接主板</small>
+                </span>
+              </div>
+              <button onClick={() => api.current?.focusStorage()}>
+                硬盘近景
+              </button>
+            </div>
+          )}
           {hud.cleaning && (
             <div className="mechanic-buttons">
               <button onClick={() => api.current?.focusCooler()}>
@@ -942,7 +1004,11 @@ export default function Workbench({
                 {hud.action === "repair" && (
                   <button
                     className="memory-focus"
-                    onClick={() => api.current?.focusMemory()}
+                    onClick={() =>
+                      hud.storage
+                        ? api.current?.focusStorage()
+                        : api.current?.focusMemory()
+                    }
                   >
                     维修近景
                   </button>

@@ -3425,6 +3425,17 @@ h1 > span {
   border: 2px dashed #ce9168;
   box-shadow: 0 0 0 4px #fffae93b;
 }
+.mechanic-marker[data-kind="sata-clip"] {
+  width: 22px;
+  height: 22px;
+  color: #52766d;
+  border-color: #52766d;
+  background: #e2ede6b0;
+}
+.mechanic-marker[data-kind="sata-data"] {
+  width: 24px;
+  height: 24px;
+}
 .mechanic-marker.dust-marker {
   width: 22px;
   height: 22px;
@@ -3486,6 +3497,52 @@ h1 > span {
 }
 .alignment-status.ready {
   color: #468363;
+}
+.connector-lesson {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+  pointer-events: auto;
+}
+.connector-lesson > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border: 1px solid #e1e4d4;
+  border-radius: 4px;
+  color: #88937d;
+  font-size: 10px;
+}
+.connector-lesson > div.current {
+  border-color: #c99565;
+  background: #f7ecdc;
+  color: #a36e40;
+}
+.connector-lesson > div.verified {
+  color: #468363;
+}
+.connector-lesson svg {
+  width: 45px;
+  height: 20px;
+  fill: currentColor;
+}
+.connector-lesson small {
+  display: block;
+  margin-top: 2px;
+  font-size: 8px;
+  opacity: 0.8;
+}
+.connector-lesson > button {
+  margin-left: auto;
+  padding: 8px;
+  border: 1px solid #d2dbc6;
+  border-radius: 4px;
+  background: #f0f3e6;
+  color: #526f55;
+  font-size: 10px;
 }
 .mechanic-nudge {
   display: flex;

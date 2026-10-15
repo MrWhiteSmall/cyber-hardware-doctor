@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { objective, tools } from "./game.js";
 import { createCoolingRepair } from "./CoolingRepair.js";
+import { createStorageRepair } from "./StorageRepair.js";
 import {
   TAU,
   ALIGNMENT_TOLERANCE,
@@ -10,7 +11,8 @@ import {
   pushPart,
 } from "./mechanics.js";
 
-export const supportsDirectJob = (id) => ["memory", "cooling"].includes(id);
+export const supportsDirectJob = (id) =>
+  ["memory", "cooling", "storage"].includes(id);
 export const isDirectAction = (game) =>
   supportsDirectJob(game.jobId) &&
   ["unscrew", "screw", "open", "close", "repair"].includes(
@@ -28,6 +30,7 @@ export function createDirectPC({
   ram,
   latches,
   dustPatches,
+  storageRig,
   latest,
 }) {
   let key = "",
@@ -58,7 +61,7 @@ export function createDirectPC({
     const rect = canvas.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
-  const planePoint = (point, z) => {
+  const planePoint = (point, z, normal = new THREE.Vector3(0, 0, 1)) => {
     const ray = new THREE.Raycaster();
     ray.setFromCamera(
       new THREE.Vector2(
@@ -68,7 +71,7 @@ export function createDirectPC({
       camera,
     );
     return ray.ray.intersectPlane(
-      new THREE.Plane(new THREE.Vector3(0, 0, 1), -z),
+      new THREE.Plane(normal, -z),
       new THREE.Vector3(),
     );
   };
@@ -116,6 +119,12 @@ export function createDirectPC({
     planePoint,
     latest,
   });
+  const storage = createStorageRepair({
+    rig: storageRig,
+    target,
+    planePoint,
+    latest,
+  });
   function targets(game, goal) {
     if (goal.action === "unscrew" || goal.action === "screw") {
       const index = goal.action === "unscrew" ? game.screws - 1 : game.screws;
@@ -155,6 +164,8 @@ export function createDirectPC({
     }
     if (goal.action === "repair" && game.jobId === "cooling")
       return cooling.targets(game);
+    if (goal.action === "repair" && game.jobId === "storage")
+      return storage.targets(game);
     if (
       goal.action === "repair" &&
       (game.repairStep === 0 || game.repairStep === 3)
@@ -224,9 +235,18 @@ export function createDirectPC({
     controls.enabled = false;
     canvas.setPointerCapture(e.pointerId);
     if (goal.action === "repair")
-      latest.current.act("select", game.jobId === "cooling" ? "cooler" : "ram");
+      latest.current.act(
+        "select",
+        game.jobId === "cooling"
+          ? "cooler"
+          : game.jobId === "storage"
+            ? "storage"
+            : "ram",
+      );
     if (game.jobId === "cooling" && goal.action === "repair")
       cooling.begin(hit, point);
+    if (game.jobId === "storage" && goal.action === "repair")
+      storage.begin(hit, point);
     const objectPose = hit.id === "cover" ? cover : pose;
     gesture = {
       id: hit.id,
@@ -254,6 +274,8 @@ export function createDirectPC({
       g = gesture;
     if (game.jobId === "cooling" && goal.action === "repair") {
       cooling.move(point);
+    } else if (game.jobId === "storage" && goal.action === "repair") {
+      storage.move(point, e.shiftKey);
     } else if (g.id === "screw") {
       const next = Math.atan2(point.y - g.center.y, point.x - g.center.x);
       if (Math.hypot(point.x - g.center.x, point.y - g.center.y) > 12)
@@ -349,6 +371,11 @@ export function createDirectPC({
         latest.current.act("repair");
       return;
     }
+    if (game.jobId === "storage" && goal.action === "repair") {
+      if (storage.finish(e.type === "pointercancel"))
+        latest.current.act("repair");
+      return;
+    }
     if (e.type === "pointercancel") return;
     if (!g.done) return;
     if (g.id.startsWith("latch")) {
@@ -358,6 +385,18 @@ export function createDirectPC({
     } else latest.current.act(goal.action);
   }
   function rotate(e) {
+    if (
+      active &&
+      latest.current.game.jobId === "storage" &&
+      storage.canInsert() &&
+      e.key.toLowerCase() === "r" &&
+      !e.repeat &&
+      !e.target.closest('input,textarea,[role="dialog"]')
+    ) {
+      e.preventDefault();
+      storage.rotate();
+      return;
+    }
     if (
       !active ||
       latest.current.game.jobId !== "memory" ||
@@ -375,6 +414,10 @@ export function createDirectPC({
     if (!active || gesture) return;
     const game = latest.current.game,
       goal = objective(game);
+    if (game.jobId === "storage" && goal.action === "repair") {
+      storage.nudge(dx, dy);
+      return;
+    }
     if (
       goal.action !== "close" &&
       !(
@@ -418,6 +461,15 @@ export function createDirectPC({
     }[e.key];
     if (!direction) return;
     const goal = objective(latest.current.game);
+    if (
+      latest.current.game.jobId === "storage" &&
+      goal.action === "repair" &&
+      storage.canInsert()
+    ) {
+      e.preventDefault();
+      nudge(...direction);
+      return;
+    }
     if (
       goal.action !== "close" &&
       !(
@@ -522,6 +574,7 @@ export function createDirectPC({
       ram.updateMatrixWorld(true);
       latches.forEach((l) => l.updateMatrixWorld(true));
       cooling.update(game, enabled);
+      storage.update(game, enabled);
       currentTargets = active ? targets(game, goal) : [];
       if (time - lastHud > 70) {
         lastHud = time;
@@ -597,13 +650,20 @@ export function createDirectPC({
                       ...(note ? { instruction: note } : {}),
                     }
                   : {}),
+                ...(game.jobId === "storage" && goal.action === "repair"
+                  ? {
+                      ...storage.hud(game),
+                      ...(note ? { instruction: note } : {}),
+                    }
+                  : {}),
               }
             : null,
         );
       }
     },
     rotate: () => {
-      angle += Math.PI / 2;
+      if (latest.current.game.jobId === "storage") storage.rotate();
+      else angle += Math.PI / 2;
     },
     nudge,
     dispose: () => {
