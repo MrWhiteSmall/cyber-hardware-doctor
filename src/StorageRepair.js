@@ -92,14 +92,14 @@ export function createStorageRepair({ rig, target, planePoint, latest }) {
       target(
         "sata-data",
         grip(),
-        "握住接头，沿箭头推入",
+        "线缆插头：握住它，沿箭头推回原接口",
         axis.clone().negate(),
       ),
       {
         ...target(
           "sata-guide",
-          world(rig.dataFrame, 0, 0, pose.z + 0.14),
-          "对齐参考",
+          world(rig.dataFrame, 0, 0, 0.02),
+          "硬盘接口：固定在硬盘上，插回这里",
         ),
         guide: true,
       },
@@ -107,8 +107,8 @@ export function createStorageRepair({ rig, target, planePoint, latest }) {
   }
   function setNote() {
     note = aligned(pose, angle)
-      ? "位置与缺口已对准，仍未连接；选择「沿槽推入」，再沿箭头拖动压到底。"
-      : "将接头握持点移进绿色参考区，方向键可微调；R 旋转检查 L 形缺口。";
+      ? "已拔开，横向对位与缺口方向已保持，无需刻意挪动。沿箭头把线缆插头推回原来的硬盘接口；平移后请切回「沿槽推入」。"
+      : "插回原来的硬盘接口。用平移或方向键，让插头沿接口轴线对正；R 检查 L 形缺口。";
   }
   return {
     canInsert: () =>
@@ -314,35 +314,23 @@ export function createStorageRepair({ rig, target, planePoint, latest }) {
     hud(game) {
       const power = game.repairStep === 0,
         inserting = !power && phase === "insert";
-      const zone = [
-        [-1, -1],
-        [1, -1],
-        [1, 1],
-        [-1, 1],
-      ]
-        .map(([x, y]) => {
-          const p = target(
-            "zone",
-            world(
-              rig.dataFrame,
-              x * ALIGNMENT_TOLERANCE,
-              y * ALIGNMENT_TOLERANCE,
-              pose.z + 0.14,
-            ),
-            "",
-          );
-          return `${p.x},${p.y}`;
-        })
-        .join(" ");
       return {
         storage: true,
         storagePhase: power ? "power" : phase,
+        connectionState: power
+          ? "本关故障：数据接头未插到底。供电正常，先确认供电连接。"
+          : phase === "release"
+            ? "拔下的是这条线的硬盘端，另一端仍连着主板；随后插回原接口。"
+            : phase === "verify"
+              ? "接头已推到底，待轻拉确认锁扣固定。"
+              : pose.z > ALIGNMENT_TOLERANCE
+                ? "插头已离开硬盘接口，当前尚未连接；虚线表示推回原接口的方向。"
+                : "接头正在进入原接口，继续沿轴线推到底。",
         canPush: inserting,
         aligned: aligned(pose, angle),
         positionAligned: aligned(pose, 0),
         directionAligned: aligned({ x: 0, y: 0 }, angle),
         angle: Math.round(((angle % TAU) / Math.PI) * 180),
-        alignmentZone: zone,
         progress:
           power || phase === "verify"
             ? Math.min(1, (gesture?.travel || 0) / 0.12)
@@ -367,7 +355,7 @@ export function createStorageRepair({ rig, target, planePoint, latest }) {
               ? "本线材带金属锁扣。选接线工具，在金属片标记上按住约半秒，再保持按住沿箭头拔出松动的接头。"
               : phase === "verify"
                 ? "握住数据接头轻拉检查，确认锁扣已回弹固定。"
-                : "沿箭头主动推入接头。需要对位时切换平移，方向键微调，R 检查 L 形缺口。"),
+                : "沿箭头把插头推回原接口。保持轴线时无需重新对位；挪偏后可切换平移，用方向键微调。"),
       };
     },
   };

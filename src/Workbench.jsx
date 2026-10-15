@@ -820,7 +820,7 @@ export default function Workbench({
                     x2={hud.targets[1].x}
                     y2={hud.targets[1].y}
                   />
-                  <polygon points={hud.alignmentZone} />
+                  {!hud.storage && <polygon points={hud.alignmentZone} />}
                 </svg>
               )}
               {hud.targets.map((target) => (
@@ -835,6 +835,11 @@ export default function Workbench({
                   style={{ left: target.x, top: target.y }}
                 >
                   <span className="marker-center" />
+                  {hud.storagePhase === "insert" && (
+                    <small className="connector-marker-label">
+                      {target.guide ? "硬盘接口 · 固定" : "线缆插头 · 握住移动"}
+                    </small>
+                  )}
                   <i>
                     {target.cleared
                       ? "✓"
@@ -909,6 +914,11 @@ export default function Workbench({
           <div className="mechanic-progress">
             <i style={{ width: `${Math.min(100, hud.progress * 100)}%` }} />
           </div>
+          {hud.storage && (
+            <p className="connector-state" role="status">
+              {hud.connectionState}
+            </p>
+          )}
           {hud.storage && (
             <div className="connector-lesson" data-phase={hud.storagePhase}>
               <div

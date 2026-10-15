@@ -3436,6 +3436,31 @@ h1 > span {
   width: 24px;
   height: 24px;
 }
+.connector-marker-label {
+  position: absolute;
+  top: 29px;
+  padding: 4px 6px;
+  color: #92572f;
+  background: #fffaedeb;
+  border: 1px solid #d6b394;
+  border-radius: 3px;
+  white-space: nowrap;
+  font: 10px sans-serif;
+}
+.guide-marker .connector-marker-label {
+  top: -30px;
+  color: #466447;
+  border-color: #9ab18e;
+}
+.mechanic-marker[data-kind="sata-data"] .connector-marker-label {
+  right: 0;
+}
+.mechanic-hud > p.connector-state {
+  color: #657353;
+  border-left: 2px solid #97ab83;
+  padding-left: 8px;
+  margin-top: 8px;
+}
 .mechanic-marker.dust-marker {
   width: 22px;
   height: 22px;

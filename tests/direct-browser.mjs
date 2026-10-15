@@ -456,6 +456,20 @@ try {
   await page.waitForTimeout(150);
   await page.locator(".scene-shell").scrollIntoViewIfNeeded();
   p = await marker("sata-data");
+  const socketBefore = await marker("sata-guide");
+  const initialGap = Math.hypot(p.x - socketBefore.x, p.y - socketBefore.y);
+  expect(initialGap).toBeGreaterThan(30);
+  await expect(page.locator(".connector-state")).toContainText("尚未连接");
+  await drag(p, { x: p.x + p.ax * 0.35, y: p.y + p.ay * 0.35 });
+  p = await marker("sata-data");
+  const socketAfter = await marker("sata-guide");
+  expect(
+    Math.hypot(socketAfter.x - socketBefore.x, socketAfter.y - socketBefore.y),
+  ).toBeLessThan(1);
+  expect(Math.hypot(p.x - socketAfter.x, p.y - socketAfter.y)).toBeLessThan(
+    initialGap - 10,
+  );
+  expect((await state()).fixed).toBe(false);
   await drag(p, { x: p.x + p.ax * 1.5, y: p.y + p.ay * 1.5 });
   await expect(page.locator(".connector-lesson")).toHaveAttribute(
     "data-phase",
