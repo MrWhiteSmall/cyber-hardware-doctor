@@ -68,6 +68,7 @@ import {
 } from "./game.js";
 import { toolLessons } from "./tutorials.js";
 import { roadmap } from "./roadmap.js";
+import { isDirectAction } from "./DirectMemory.js";
 import "./styles.css";
 
 const STORE = "little-repair-shop-v2";
@@ -267,12 +268,14 @@ function App() {
   const [chapterTab, setChapterTab] = useState("pc"),
     [guide, setGuide] = useState(null);
   const [plannedChapter, setPlannedChapter] = useState(roadmap[0]);
+  const [manual, setManual] = useState(true);
   const { game, completed, learned } = profile;
   const job = jobs.find((j) => j.id === game.jobId),
     goal = objective(game),
     selected = parts[game.selected];
   const chapter = chapterOf(job),
     inventory = [...starterTools, ...profile.purchased];
+  const direct = manual && game.jobId === "memory";
   const visibleTools = tools.filter(
     (t) =>
       starterTools.includes(t.id) ||
@@ -366,6 +369,7 @@ function App() {
     }
   }
   function primary() {
+    if (direct && isDirectAction(game)) return;
     playClick();
     if (goal.action === "quiz") {
       setModal("quiz");
@@ -516,6 +520,33 @@ function App() {
             </span>
           </div>
         </div>
+        <div className="operation-mode">
+          <span>
+            <Hand size={14} />
+            操作方式
+          </span>
+          <button
+            className={direct ? "active" : ""}
+            disabled={game.jobId !== "memory"}
+            onClick={() => {
+              setManual(true);
+              setExploded(false);
+            }}
+          >
+            3D 手动实操
+          </button>
+          <button
+            className={!direct ? "active" : ""}
+            onClick={() => setManual(false)}
+          >
+            辅助教学
+          </button>
+          <small>
+            {game.jobId === "memory"
+              ? "手动旋拧、释放卡扣、轴向拔插；对齐不会自动连接。"
+              : "本关目前为辅助教学；首关已开放手动实操。"}
+          </small>
+        </div>
         <div className="workspace">
           <aside className="order-panel">
             <div className="section-top">
@@ -629,6 +660,8 @@ function App() {
                 setExploded={setExploded}
                 showLabels={showLabels}
                 setShowLabels={setShowLabels}
+                direct={direct}
+                onFallback={() => setManual(false)}
               />
               <div className="part-selector" aria-label="选择零件">
                 {chapter.parts.map((id) => {
@@ -723,14 +756,19 @@ function App() {
                   {goal.action === "inspect"
                     ? `线索：这张工单与${parts[job.target].name}有关，选中它再点击检查。`
                     : goal.action === "repair"
-                      ? `选中${parts[job.target].name}，点击下方按钮完成操作。`
-                      : "点击下方按钮，完成这一步操作。"}
+                      ? direct
+                        ? "选择拆装工具，在 3D 视图中沿结构操作；对齐后要主动推入。"
+                        : `选中${parts[job.target].name}，点击下方按钮完成操作。`
+                      : direct && isDirectAction(game)
+                        ? "按 3D 视图中的旋转或平移提示，实际操作零件。"
+                        : "点击下方按钮，完成这一步操作。"}
                 </p>
               )}
               <button
                 className="primary-action"
                 onClick={primary}
                 data-testid="primary-action"
+                disabled={direct && isDirectAction(game)}
               >
                 {goal.action === "test" ? (
                   <Power size={16} />
@@ -739,7 +777,9 @@ function App() {
                 ) : (
                   <Wrench size={15} />
                 )}
-                {goal.label}
+                {direct && isDirectAction(game)
+                  ? "在 3D 工作台上完成此操作"
+                  : goal.label}
                 <ArrowRight size={16} />
               </button>
             </div>
@@ -1310,8 +1350,7 @@ function App() {
                   <b>选工具，再动手</b>
                   <p>
                     使用工具台或数字键 1–8
-                    切换工具。下方橙色按钮执行当前操作；螺丝也可以在 3D
-                    机箱上点选。
+                    切换工具。电脑首关默认手动实操：对准螺丝圆环，按住并逆时针旋拧，取下侧板后分别操作卡扣。辅助教学可用步骤按钮。
                   </p>
                 </li>
                 <li>

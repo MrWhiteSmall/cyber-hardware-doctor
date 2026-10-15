@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RotateCcw, Maximize, MousePointer2 } from "lucide-react";
 import { parts, jobs, chapterOf } from "./game.js";
+import { createDirectMemory } from "./DirectMemory.js";
 
 const anchors = {
   cooler: [-0.35, 3.65, 0.8],
@@ -215,15 +216,19 @@ function makeScene(host, onSelect, latest, labels) {
     box(cooling, [1.3, 0.025, 0.62], [-0.35, 3.04 + i * 0.077, -0.1], m.silver);
   fan(cooling, -0.35, 3.65, 0.41, 0.59, m.silver);
   const ram = part("ram");
+  const ramLatches = [];
   for (const x of [0.67, 0.98]) {
-    box(ram, [0.15, 1.62, 0.42], [x, 3.65, -0.24], m.green);
-    box(ram, [0.17, 1.42, 0.12], [x, 3.65, 0.02], m.dark);
-    for (const y of [2.78, 4.51])
-      box(ram, [0.21, 0.1, 0.2], [x, y, -0.25], m.frame);
+    const module = x === 0.67 ? ram : board;
+    box(module, [0.15, 1.62, 0.42], [x, 3.65, -0.24], m.green);
+    box(module, [0.17, 1.42, 0.12], [x, 3.65, 0.02], m.dark);
+    for (const y of [2.78, 4.51]) {
+      const latch = box(board, [0.21, 0.1, 0.2], [x, y, -0.25], m.frame);
+      if (x === 0.67) ramLatches.push(latch);
+    }
     for (let i = 0; i < 8; i++)
-      box(ram, [0.17, 0.08, 0.025], [x, 3.1 + i * 0.16, 0.09], m.silver);
+      box(module, [0.17, 0.08, 0.025], [x, 3.1 + i * 0.16, 0.09], m.silver);
   }
-  text(ram, "DDR4", [0.84, 3.65, 0.12], 0.12).rotation.z = Math.PI / 2;
+  text(ram, "DDR4", [0.67, 3.65, 0.12], 0.12).rotation.z = Math.PI / 2;
   const gpu = part("gpu");
   box(gpu, [2.45, 0.82, 0.9], [-0.12, 2.04, 0.19], m.dark);
   box(gpu, [2.5, 0.07, 0.98], [-0.12, 2.48, 0.19], m.silver);
@@ -503,6 +508,18 @@ function makeScene(host, onSelect, latest, labels) {
   const selection = new THREE.Box3Helper(new THREE.Box3(), "#f0a06f");
   selection.visible = false;
   scene.add(selection);
+  const direct = createDirectMemory({
+    host,
+    renderer,
+    camera,
+    controls,
+    scene,
+    panel,
+    screws,
+    ram,
+    latches: ramLatches,
+    latest,
+  });
   const ray = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
   let down = null;
@@ -530,7 +547,11 @@ function makeScene(host, onSelect, latest, labels) {
       true,
     );
     for (const hit of hits) {
-      if (hit.object.userData.screw && !latest.current.game.panelOpen) {
+      if (
+        hit.object.userData.screw &&
+        !latest.current.game.panelOpen &&
+        !latest.current.direct
+      ) {
         latest.current.act(latest.current.game.fixed ? "screw" : "unscrew");
         return;
       }
@@ -632,10 +653,13 @@ function makeScene(host, onSelect, latest, labels) {
       selection.visible = true;
     } else selection.visible = false;
     controls.update();
+    direct.update(time);
     for (const [id, el] of Object.entries(labels.current)) {
       if (!el) continue;
       projected.set(...anchors[id]);
-      if (device === "pc") projected.add(groups[id].position);
+      if (device === "pc" && id === "ram" && latest.current.direct)
+        projected.set(0.67, 3.65, 0.16).applyMatrix4(ram.matrixWorld);
+      else if (device === "pc") projected.add(groups[id].position);
       projected.project(camera);
       el.style.left = `${(projected.x * 0.5 + 0.5) * host.clientWidth}px`;
       el.style.top = `${(-projected.y * 0.5 + 0.5) * host.clientHeight}px`;
@@ -647,12 +671,14 @@ function makeScene(host, onSelect, latest, labels) {
     renderer.render(scene, camera);
   });
   return {
+    rotatePart: () => direct.rotate(),
     reset: () => {
       camera.position.copy(home);
       controls.target.set(0, 2.55, 0);
       controls.update();
     },
     dispose: () => {
+      direct.dispose();
       observer.disconnect();
       controls.dispose();
       renderer.setAnimationLoop(null);
@@ -681,13 +707,17 @@ export default function Workbench({
   setExploded,
   showLabels,
   setShowLabels,
+  direct = false,
+  onFallback,
 }) {
   const host = useRef(null),
     api = useRef(null),
     labels = useRef({}),
     latest = useRef({ game, act, exploded });
   const [error, setError] = useState(false);
-  latest.current = { game, act, exploded };
+  const [hud, setHud] = useState(null),
+    [pushMode, setPushMode] = useState(false);
+  latest.current = { game, act, exploded, direct, pushMode, onHud: setHud };
   useEffect(() => {
     try {
       api.current = makeScene(
@@ -699,11 +729,12 @@ export default function Workbench({
     } catch (e) {
       console.error(e);
       setError(true);
+      onFallback?.();
     }
     return () => api.current?.dispose();
   }, []);
   return (
-    <div className="scene-shell">
+    <div className={`scene-shell ${direct && hud ? "direct-active" : ""}`}>
       <div className="scene-host" ref={host}>
         {error && (
           <div className="webgl-fallback">
@@ -711,6 +742,75 @@ export default function Workbench({
             <br />
             仍可用下方零件按钮完成全部维修操作。
           </div>
+        )}
+        {direct && hud && (
+          <>
+            <div className="mechanic-targets">
+              {hud.targets.map((target) => (
+                <div
+                  key={target.id}
+                  className={`mechanic-marker ${target.id === "screw" ? "screw-marker" : ""} ${target.guide ? "guide-marker" : ""}`}
+                  data-kind={target.id}
+                  data-axis-x={target.axis?.x || 0}
+                  data-axis-y={target.axis?.y || 0}
+                  style={{ left: target.x, top: target.y }}
+                >
+                  <span className="marker-center" />
+                  <i>
+                    {target.guide
+                      ? "+"
+                      : target.id === "screw"
+                        ? hud.action === "unscrew"
+                          ? "↺"
+                          : "↻"
+                        : target.id.startsWith("latch")
+                          ? "↕"
+                          : "✥"}
+                  </i>
+                  {target.axis && (
+                    <span
+                      className="mechanic-axis"
+                      style={{
+                        transform: `rotate(${Math.atan2(target.axis.y, target.axis.x)}rad)`,
+                      }}
+                    >
+                      ➜
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mechanic-hud">
+              <span>
+                手动实操 /{" "}
+                {hud.action === "screw" || hud.action === "unscrew"
+                  ? `${Math.round(hud.progress * 720)}° / 720°`
+                  : hud.action === "repair" && hud.step === 2
+                    ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
+                    : "沿结构操作"}
+              </span>
+              <p>{hud.instruction}</p>
+              <div className="mechanic-progress">
+                <i style={{ width: `${Math.min(100, hud.progress * 100)}%` }} />
+              </div>
+              {hud.canPush && (
+                <div className="mechanic-buttons">
+                  <button
+                    className={pushMode ? "active" : ""}
+                    onClick={() => setPushMode(!pushMode)}
+                  >
+                    {pushMode ? "推入模式：开" : "推入模式：关"}
+                    <small>也可按住 Shift 拖动</small>
+                  </button>
+                  {hud.action === "repair" && (
+                    <button onClick={() => api.current?.rotatePart()}>
+                      旋转 90° <small>R</small>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
         )}
         {showLabels &&
           chapterOf(jobs.find((j) => j.id === game.jobId))
@@ -742,6 +842,7 @@ export default function Workbench({
           <RotateCcw size={15} />
         </button>
         <button
+          disabled={direct}
           className={exploded ? "active" : ""}
           onClick={() => setExploded(!exploded)}
           title="切换拆解视图"

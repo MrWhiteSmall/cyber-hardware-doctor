@@ -295,8 +295,9 @@ export const chapters = [
 const repairPlans = {
   memory: [
     { text: "打开内存插槽两端的卡扣", tool: "hand" },
-    { text: "取出内存，对齐缺口后重新插入", tool: "hand" },
-    { text: "均匀按压两端，确认卡扣锁紧", tool: "hand" },
+    { text: "沿插槽法线方向，平直取出松动的内存", tool: "hand" },
+    { text: "对齐缺口，再沿插槽方向手动压入内存", tool: "hand" },
+    { text: "检查并逐个锁紧两端卡扣", tool: "hand" },
   ],
   cooling: [
     { text: "用手固定散热风扇的叶片", tool: "hand" },

@@ -3328,6 +3328,235 @@ h1 > span {
     min-width: 0;
   }
 }
+.operation-mode {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+  font-size: 10px;
+  color: #8c9b7c;
+  flex-wrap: wrap;
+}
+.operation-mode > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+}
+.operation-mode > button {
+  font-size: 10px;
+  border: 1px solid #dce3cf;
+  border-radius: 4px;
+  padding: 6px 9px;
+  background: #f7f8ee;
+  color: #9baa8a;
+}
+.operation-mode > button.active {
+  background: #e8eedc;
+  border-color: #a8ba91;
+  color: #6b8653;
+}
+.operation-mode > button:disabled {
+  opacity: 0.4;
+}
+.operation-mode > small {
+  font-size: 9px;
+  margin-left: auto;
+  color: #a5af98;
+}
+.primary-action:disabled {
+  background: #e8ecdf;
+  color: #96a386;
+  box-shadow: none;
+  cursor: default;
+}
+.direct-active .scene-label {
+  pointer-events: none;
+  opacity: 0.38;
+}
+.mechanic-targets {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+.mechanic-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d28f61;
+  border-radius: 50%;
+  background: #f9eedb75;
+  box-shadow: 0 0 0 4px #f9eedb35;
+  display: grid;
+  place-items: center;
+  color: #b67e53;
+  pointer-events: none;
+}
+.mechanic-marker > i {
+  font:
+    22px "DM Mono",
+    sans-serif;
+  font-style: normal;
+  line-height: 1;
+}
+.mechanic-marker.screw-marker {
+  width: 61px;
+  height: 61px;
+  background: transparent;
+  border: 2px dashed #ce9168;
+  box-shadow: 0 0 0 4px #fffae93b;
+}
+.screw-marker > i {
+  font-size: 37px;
+  opacity: 0.6;
+}
+.marker-center {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border: 1px solid #bd8356;
+  border-radius: 50%;
+  background: #fff7e4;
+}
+.mechanic-axis {
+  position: absolute;
+  font: 28px sans-serif;
+  color: #d18a55;
+  left: 50%;
+  top: 50%;
+  transform-origin: 0 0;
+  line-height: 0;
+  width: 58px;
+  text-align: right;
+  text-shadow: 0 1px 4px #fff;
+}
+.mechanic-marker.guide-marker {
+  width: 18px;
+  height: 18px;
+  border-style: dashed;
+  border-color: #789b61;
+  color: #789b61;
+  background: transparent;
+  box-shadow: none;
+  z-index: -1;
+}
+.guide-marker > i {
+  font-size: 15px;
+}
+.guide-marker > .marker-center {
+  display: none;
+}
+.mechanic-hud {
+  position: absolute;
+  bottom: 50px;
+  left: 14px;
+  right: 14px;
+  max-width: 460px;
+  padding: 10px 12px;
+  border: 1px solid #d9ddc9;
+  background: #fffdf0e8;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 3px 12px #4052360d;
+  border-radius: 5px;
+  z-index: 5;
+  pointer-events: none;
+}
+.mechanic-hud > span {
+  font:
+    8px "DM Mono",
+    "Noto Sans SC";
+  letter-spacing: 0.7px;
+  color: #bc8858;
+}
+.mechanic-hud > p {
+  font-size: 10px;
+  line-height: 1.8;
+  color: #7f8f6e;
+  margin: 5px 0 7px;
+}
+.mechanic-progress {
+  height: 2px;
+  background: #e4e9d8;
+}
+.mechanic-progress > i {
+  height: 2px;
+  display: block;
+  background: #c3925f;
+}
+.mechanic-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  pointer-events: auto;
+}
+.mechanic-buttons > button {
+  font-size: 9px;
+  background: #eff2e3;
+  border: 1px solid #d9e2c8;
+  border-radius: 4px;
+  padding: 7px 10px;
+  color: #8d9f73;
+}
+.mechanic-buttons > button.active {
+  background: #f5e8d5;
+  color: #b48b5e;
+  border-color: #d6bb97;
+}
+.mechanic-buttons small {
+  font-size: 7px;
+  margin-left: 6px;
+  opacity: 0.7;
+}
+.view-controls > button:disabled {
+  opacity: 0.3;
+}
+.direct-active {
+  cursor: grab;
+}
+.direct-active:active {
+  cursor: grabbing;
+}
+@media (max-width: 660px) {
+  .operation-mode {
+    font-size: 8px;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .operation-mode > button {
+    font-size: 9px;
+  }
+  .operation-mode > small {
+    flex-basis: 100%;
+    margin: 4px 0 0;
+    font-size: 8px;
+    line-height: 1.8;
+  }
+  .mechanic-hud {
+    bottom: 48px;
+    left: 10px;
+    right: 10px;
+    padding: 9px 10px;
+  }
+  .mechanic-hud > p {
+    font-size: 9px;
+  }
+  .mechanic-hud > span {
+    font-size: 7px;
+  }
+  .mechanic-buttons > button {
+    font-size: 8px;
+    padding: 6px 8px;
+  }
+  .mechanic-buttons small {
+    font-size: 6px;
+  }
+  .mechanic-marker.screw-marker {
+    height: 51px;
+    width: 51px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *:before,

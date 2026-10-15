@@ -32,6 +32,7 @@ const closeTutorial = async () => {
 };
 await page.goto("http://127.0.0.1:5188", { waitUntil: "domcontentloaded" });
 await expect(page.locator(".scene-host canvas")).toBeVisible();
+await page.getByRole("button", { name: "辅助教学", exact: true }).click();
 await page.screenshot({
   path: "artifacts/workbench-desktop.png",
   fullPage: true,
