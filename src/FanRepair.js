@@ -138,7 +138,10 @@ export function createFanRepair({ rig, target, planePoint, latest }) {
         : "小步调整护网螺孔，绿色表示横向对位正确。";
     },
     update(game, direct) {
-      if (!direct || !["fan-dust", "fan-bearing"].includes(game.jobId)) {
+      if (
+        !direct ||
+        !["fan-dust", "fan-bearing", "fan-cable"].includes(game.jobId)
+      ) {
         key = "";
         return;
       }

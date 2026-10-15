@@ -60,9 +60,10 @@ async function turn(clockwise, turns = 2.08) {
 }
 try {
   let p;
+  const cableOnly = process.argv.includes("--cable");
   const bearingOnly = process.argv.includes("--bearing");
   const fanOnly = process.argv.includes("--fan");
-  if (!fanOnly && !bearingOnly) {
+  if (!fanOnly && !bearingOnly && !cableOnly) {
     const storageOnly = process.argv.includes("--storage");
     if (!storageOnly) {
       await page.goto("http://127.0.0.1:5188", {
@@ -540,7 +541,11 @@ try {
       createGame("fan-dust"),
     );
     await page.reload();
-  } else if (!bearingOnly && !process.argv.includes("--storage")) {
+  } else if (
+    !cableOnly &&
+    !bearingOnly &&
+    !process.argv.includes("--storage")
+  ) {
     await closeLesson();
     await page.getByRole("button", { name: /维修工单/ }).click();
     await page
@@ -550,7 +555,11 @@ try {
     await page.locator(".job-card").filter({ hasText: "风变小了" }).click();
     await closeLesson();
   }
-  if (!bearingOnly && (fanOnly || !process.argv.includes("--storage"))) {
+  if (
+    !cableOnly &&
+    !bearingOnly &&
+    (fanOnly || !process.argv.includes("--storage"))
+  ) {
     await expect(
       page.getByRole("button", { name: "3D 手动实操", exact: true }),
     ).toHaveClass("active");
@@ -681,7 +690,10 @@ try {
       "PASS fourth job: screw turning, axial guard extraction before moving aside, hold blades, clean 4 guard and 5 blade patches, reload recovery, mobile, deliberate reassembly and delivery",
     );
   }
-  if (bearingOnly || (!fanOnly && !process.argv.includes("--storage"))) {
+  if (
+    !cableOnly &&
+    (bearingOnly || (!fanOnly && !process.argv.includes("--storage")))
+  ) {
     if (bearingOnly) {
       await page.goto("http://127.0.0.1:5188");
       await page.evaluate(
@@ -890,6 +902,289 @@ try {
     expect(errors).toEqual([]);
     console.log(
       "PASS fifth job: manual guard, dry spin and coast, rear plug extraction, reject quick/long/drifting oil, one short oil drop, explicit sealing and lubricated spin, reload, mobile and delivery",
+    );
+  }
+
+  if (
+    cableOnly ||
+    (!fanOnly && !bearingOnly && !process.argv.includes("--storage"))
+  ) {
+    if (cableOnly) {
+      await page.goto("http://127.0.0.1:5188");
+      await page.evaluate(
+        (game) =>
+          localStorage.setItem(
+            "little-repair-shop-v2",
+            JSON.stringify({
+              version: 2,
+              game,
+              completed: [
+                "memory",
+                "cooling",
+                "storage",
+                "fan-dust",
+                "fan-bearing",
+              ],
+              purchased: ["air", "cable", "oil"],
+              learned: ["ram", "cooler", "storage", "fanBlade", "fanMotor"],
+              seen: ["chapter:pc", "chapter:fan"],
+            }),
+          ),
+        createGame("fan-cable"),
+      );
+      await page.reload();
+    } else {
+      await closeLesson();
+      await page.getByRole("button", { name: /维修工单/ }).click();
+      await page
+        .locator(".chapter-tabs button")
+        .filter({ hasText: "CH.02" })
+        .click();
+      await page
+        .locator(".job-card")
+        .filter({ hasText: "看不见的断点" })
+        .click();
+      await closeLesson();
+    }
+    await page.getByRole("button", { name: "装备市场", exact: true }).click();
+    await page
+      .locator(".market-grid article")
+      .filter({ hasText: market.find((item) => item.id === "meter").name })
+      .getByRole("button", { name: "购买装备" })
+      .click();
+    await page.getByRole("button", { name: "关闭窗口" }).click();
+    await page.getByTestId("primary-action").click();
+    await page.getByTestId("primary-action").click();
+    await expect(page.getByTestId("primary-action")).toBeDisabled();
+    await tool("螺丝刀");
+    for (let i = 4; i > 0; i--) {
+      await turn(false);
+      await expect.poll(async () => (await state()).screws).toBe(i - 1);
+    }
+    await tool("拆装");
+    p = await marker("cover");
+    await drag(p, { x: p.x + p.ax * 1.3, y: p.y + p.ay * 1.3 });
+    p = await marker("cover");
+    await drag(p, { x: p.x + p.ax * 3.5, y: p.y + p.ay * 3.5 });
+    await expect.poll(async () => (await state()).panelOpen).toBe(true);
+    await page
+      .locator(".part-selector button")
+      .filter({ hasText: "USB 供电线" })
+      .click();
+    await tool("观察");
+    await page.getByTestId("primary-action").click();
+    await closeLesson();
+    await tool("万用表");
+    p = await marker("wire-unplug");
+    await drag(p, { x: p.x + p.ax, y: p.y + p.ay });
+    expect((await state()).repairStep).toBe(0);
+    await tool("拆装");
+    p = await marker("wire-unplug");
+    await page.mouse.click(p.x, p.y);
+    expect((await state()).repairStep).toBe(0);
+    await drag(p, { x: p.x + p.ax * 1.2, y: p.y + p.ay * 1.2 });
+    await expect.poll(async () => (await state()).repairStep).toBe(1);
+    await tool("万用表");
+    async function moveProbe(id, targetId) {
+      const start = await marker(`probe-${id}`),
+        end = await marker(targetId);
+      await drag(start, end);
+    }
+    async function measure(net) {
+      await moveProbe("red", `wire-a-${net}`);
+      await moveProbe("black", `wire-b-${net}`);
+      await page.waitForTimeout(750);
+    }
+    await measure("plus");
+    await expect(page.getByTestId("meter-reading")).toHaveText("—");
+    await page.getByRole("button", { name: "V⎓", exact: true }).click();
+    await expect(page.getByTestId("meter-reading")).toHaveText("选通断档");
+    await page.getByRole("button", { name: "Ω / 蜂鸣", exact: true }).click();
+    await page
+      .getByRole("button", { name: "蜂鸣声音：关", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "关闭操作音效", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "关闭操作音效", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "蜂鸣声音：关", exact: true }),
+    ).toBeVisible();
+    await page.waitForTimeout(700);
+    await expect(page.locator(".meter-evidence")).toContainText(
+      "A+ ↔ B+：未测",
+    );
+    // No stored conductor result until the instrument has passed a tip-short self-test.
+    await moveProbe("red", "probe-black");
+    await expect(page.locator(".meter-evidence .verified")).toContainText(
+      "短接表笔自检",
+    );
+    await moveProbe("red", "wire-a-plus");
+    await moveProbe("black", "wire-b-minus");
+    await page.waitForTimeout(700);
+    await expect(page.locator(".mechanic-hud")).toContainText("不同导体");
+    await expect(page.locator(".meter-evidence")).toContainText(
+      "A+ ↔ B+：未测",
+    );
+    // Exact contact placement matters: a tip released in free space must stay there.
+    p = await marker("probe-red");
+    await drag(p, { x: p.x, y: p.y - 24 });
+    await page.waitForTimeout(650);
+    expect((await state()).repairStep).toBe(1);
+    await measure("plus");
+    p = await marker("probe-red");
+    await page.getByRole("button", { name: "微调红笔", exact: true }).click();
+    await page.keyboard.press("ArrowRight");
+    const adjusted = await marker("probe-red");
+    expect(adjusted.x).toBeGreaterThan(p.x);
+    await page.keyboard.press("ArrowLeft");
+    await page.waitForTimeout(650);
+    await expect(page.locator(".meter-evidence")).toContainText("A+ ↔ B+：OL");
+    await expect(page.getByTestId("meter-beep")).toContainText("无蜂鸣");
+    await page.screenshot({
+      path: "artifacts/manual-cable-open.png",
+      fullPage: true,
+    });
+    await page.reload();
+    await expect(page.locator(".cable-lesson")).toHaveAttribute(
+      "data-phase",
+      "diagnose",
+    );
+    await expect(page.locator(".meter-evidence")).toContainText(
+      "A+ ↔ B+：未测",
+    );
+    await page.getByRole("button", { name: "Ω / 蜂鸣", exact: true }).click();
+    await moveProbe("red", "probe-black");
+    await expect(page.locator(".meter-evidence .verified")).toBeVisible();
+    await measure("plus");
+    await page.setViewportSize({ width: 390, height: 1000 });
+    await page.waitForTimeout(200);
+    await page.locator(".scene-shell").scrollIntoViewIfNeeded();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(390);
+    for (const id of [
+      "probe-red",
+      "probe-black",
+      "wire-a-minus",
+      "wire-b-minus",
+    ]) {
+      const at = await marker(id);
+      expect(
+        await page.evaluate(
+          ({ x, y }) => document.elementFromPoint(x, y)?.tagName,
+          at,
+        ),
+      ).toBe("CANVAS");
+    }
+    await page.screenshot({
+      path: "artifacts/manual-cable-mobile.png",
+      fullPage: true,
+    });
+    // Actually measure a conductor at phone width, instead of only checking layout.
+    await measure("minus");
+    await moveProbe("red", "rack-red");
+    await moveProbe("black", "rack-black");
+    await expect.poll(async () => (await state()).repairStep).toBe(2);
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.waitForTimeout(200);
+    await page.locator(".scene-shell").scrollIntoViewIfNeeded();
+    await tool("接线");
+    p = await marker("wire-carry");
+    await drag(p, { x: p.x + p.ax * 1.8, y: p.y + p.ay * 1.8 });
+    await expect(page.locator(".cable-lesson")).toHaveAttribute(
+      "data-phase",
+      "prepare",
+    );
+    p = await marker("wire-carry");
+    await drag(p, { x: p.x + p.ax * 1.02, y: p.y + p.ay * 1.02 });
+    await expect.poll(async () => (await state()).repairStep).toBe(3);
+    expect((await state()).fixed).toBe(false);
+    await page.reload();
+    await expect(page.locator(".cable-lesson")).toHaveAttribute(
+      "data-phase",
+      "retest",
+    );
+    await tool("万用表");
+    await page.getByRole("button", { name: "Ω / 蜂鸣", exact: true }).click();
+    await moveProbe("red", "probe-black");
+    await expect(page.locator(".meter-evidence .verified")).toBeVisible();
+    await measure("plus");
+    await expect(page.locator(".meter-evidence")).toContainText(
+      "A+ ↔ B+：0.3 Ω",
+    );
+    await expect(page.getByTestId("meter-beep")).toContainText("蜂鸣 · 低电阻");
+    await measure("minus");
+    await moveProbe("red", "rack-red");
+    await moveProbe("black", "rack-black");
+    await expect(page.locator(".cable-lesson")).toHaveAttribute(
+      "data-phase",
+      "insert",
+    );
+    expect((await state()).fixed).toBe(false);
+    await tool("接线");
+    await page.getByRole("button", { name: "平移对位", exact: true }).click();
+    for (let i = 0; i < 7; i++) await page.keyboard.press("ArrowRight");
+    await page.getByRole("button", { name: /沿槽推入/ }).click();
+    p = await marker("wire-plug");
+    await drag(p, { x: p.x + p.ax * 1.1, y: p.y + p.ay * 1.1 });
+    await expect(page.locator(".mechanic-hud")).toContainText("插座会阻挡");
+    expect((await state()).fixed).toBe(false);
+    await page.getByRole("button", { name: "平移对位", exact: true }).click();
+    for (let i = 0; i < 7; i++) await page.keyboard.press("ArrowLeft");
+    await expect(page.locator(".alignment-status.ready")).toBeVisible();
+    await page.screenshot({
+      path: "artifacts/manual-cable-connect.png",
+      fullPage: true,
+    });
+    // Position alignment and mouse-up do not install the connector.
+    expect((await state()).fixed).toBe(false);
+    await page.getByRole("button", { name: /沿槽推入/ }).click();
+    p = await marker("wire-plug");
+    await drag(p, { x: p.x + p.ax * 1.1, y: p.y + p.ay * 1.1 });
+    await expect(page.locator(".cable-lesson")).toHaveAttribute(
+      "data-phase",
+      "source",
+    );
+    expect((await state()).fixed).toBe(false);
+    p = await marker("wire-plug");
+    await drag(p, { x: p.x + p.ax * 1.1, y: p.y + p.ay * 1.1 });
+    await expect(page.locator(".cable-lesson")).toHaveAttribute(
+      "data-phase",
+      "retain",
+    );
+    expect((await state()).fixed).toBe(false);
+    p = await marker("wire-retain");
+    await drag(p, { x: p.x + p.ax * 0.2, y: p.y + p.ay * 0.2 });
+    await expect.poll(async () => (await state()).fixed).toBe(true);
+    await tool("拆装");
+    await page.getByRole("button", { name: "平移对位", exact: true }).click();
+    for (let i = 0; i < 4; i++) {
+      p = await marker("cover");
+      const g = await marker("cover-guide");
+      await drag(p, { x: g.x - p.ax, y: g.y - p.ay });
+    }
+    await expect(page.locator(".alignment-status.ready")).toBeVisible();
+    await page.getByRole("button", { name: /沿槽推入/ }).click();
+    p = await marker("cover");
+    await drag(p, { x: p.x + p.ax * 1.4, y: p.y + p.ay * 1.4 });
+    await expect.poll(async () => (await state()).panelOpen).toBe(false);
+    await tool("螺丝刀");
+    for (let i = 0; i < 4; i++) {
+      await turn(true);
+      await expect.poll(async () => (await state()).screws).toBe(i + 1);
+    }
+    await page.getByTestId("primary-action").click();
+    await page.getByTestId("primary-action").click();
+    await page.locator(".quiz-options button").nth(2).click();
+    await page.getByRole("button", { name: "学会了，准备交付" }).click();
+    await page.getByTestId("primary-action").click();
+    await expect.poll(async () => (await state()).delivered).toBe(true);
+    expect(errors).toEqual([]);
+    console.log(
+      "PASS sixth job: manual guard, isolation, meter mode and tip-short self-test, actual probe contacts, reject cross-net/air readings, old open and good return, reload, mobile measurement, new-cable retest before connecting, no snap, two deliberate insertions, retention and delivery",
     );
   }
 } catch (e) {

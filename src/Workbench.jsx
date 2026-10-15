@@ -6,6 +6,7 @@ import { parts, jobs, chapterOf } from "./game.js";
 import { createDirectPC, supportsDirectFan } from "./DirectPC.js";
 import { createStorageRig } from "./StorageRepair.js";
 import { createBearingRig } from "./BearingRepair.js";
+import { createCableRig } from "./CableRepair.js";
 
 const anchors = {
   cooler: [-0.35, 3.65, 0.8],
@@ -405,8 +406,10 @@ function makeScene(host, onSelect, latest, labels) {
   fanWire.userData.part = "fanCable";
   groups.fanCable = fanWire;
   fanDevice.add(fanWire);
+  const fanWireStock = new THREE.Group();
+  fanWire.add(fanWireStock);
   line(
-    fanWire,
+    fanWireStock,
     [
       [0, 0.3, -0.3],
       [1, 0.2, 0],
@@ -417,8 +420,17 @@ function makeScene(host, onSelect, latest, labels) {
     m.black,
     0.045,
   );
-  box(fanWire, [0.3, 0.15, 0.42], [0.48, 0.17, 1.5], m.dark);
-  box(fanWire, [0.27, 0.13, 0.22], [0.48, 0.17, 1.8], m.silver);
+  box(fanWireStock, [0.3, 0.15, 0.42], [0.48, 0.17, 1.5], m.dark);
+  box(fanWireStock, [0.27, 0.13, 0.22], [0.48, 0.17, 1.8], m.silver);
+  const cableRig = createCableRig({
+    parent: fanWire,
+    stock: fanWireStock,
+    box,
+    cylinder,
+    line,
+    text,
+    materials: m,
+  });
   const fanDust = new THREE.Group();
   blade.add(fanDust);
   const fanPatches = [];
@@ -568,6 +580,7 @@ function makeScene(host, onSelect, latest, labels) {
       screws: fanScrews,
       patches: fanPatches,
       bearing: bearingRig,
+      cable: cableRig,
     },
     latest,
   });
@@ -617,10 +630,12 @@ function makeScene(host, onSelect, latest, labels) {
   renderer.domElement.addEventListener("pointerdown", pointerDown);
   renderer.domElement.addEventListener("pointerup", pointerUp);
   let fanView = false,
-    bearingView = false;
+    bearingView = false,
+    cableView = false;
   const focusFan = () => {
     fanView = true;
     bearingView = false;
+    cableView = false;
     controls.minDistance = 7;
     controls.maxDistance = 32;
     controls.target.set(-1.45, 2.9, 0.8);
@@ -637,6 +652,7 @@ function makeScene(host, onSelect, latest, labels) {
     controls.update();
   };
   const focusBearing = () => {
+    cableView = false;
     bearingView = true;
     fanView = false;
     controls.minDistance = 3;
@@ -658,6 +674,29 @@ function makeScene(host, onSelect, latest, labels) {
       );
     controls.update();
   };
+  const focusCable = () => {
+    cableView = true;
+    fanView = false;
+    bearingView = false;
+    controls.minDistance = 4;
+    controls.maxDistance = 32;
+    controls.target.set(0, 1.8, 1.7);
+    camera.position
+      .copy(controls.target)
+      .add(
+        new THREE.Vector3(1.2, 0.75, 3.8)
+          .normalize()
+          .multiplyScalar(
+            Math.max(
+              8,
+              2.1 /
+                (camera.aspect *
+                  Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))),
+            ),
+          ),
+      );
+    controls.update();
+  };
   const resize = () => {
     const { width, height } = host.getBoundingClientRect();
     renderer.setSize(width, height);
@@ -665,6 +704,7 @@ function makeScene(host, onSelect, latest, labels) {
     camera.updateProjectionMatrix();
     if (fanView) focusFan();
     if (bearingView) focusBearing();
+    if (cableView) focusCable();
   };
   const observer = new ResizeObserver(resize);
   observer.observe(host);
@@ -785,6 +825,7 @@ function makeScene(host, onSelect, latest, labels) {
     focusMemory: () => {
       fanView = false;
       bearingView = false;
+      cableView = false;
       controls.minDistance = 7;
       controls.target.set(0.67, 3.65, 0.8);
       camera.position.copy(controls.target).add(new THREE.Vector3(3.2, 1.2, 7));
@@ -793,6 +834,7 @@ function makeScene(host, onSelect, latest, labels) {
     focusCooler: () => {
       fanView = false;
       bearingView = false;
+      cableView = false;
       controls.minDistance = 7;
       controls.target.set(-0.35, 3.65, 0.5);
       camera.position.copy(controls.target).add(new THREE.Vector3(2.5, 0.8, 7));
@@ -801,6 +843,7 @@ function makeScene(host, onSelect, latest, labels) {
     focusStorage: () => {
       fanView = false;
       bearingView = false;
+      cableView = false;
       controls.minDistance = 3;
       controls.target.set(-0.05, 1.35, 0.1);
       camera.position
@@ -810,6 +853,10 @@ function makeScene(host, onSelect, latest, labels) {
     },
     focusFan,
     focusBearing,
+    focusCable,
+    setMeterMode: (value) => direct.setMeterMode(value),
+    selectProbe: (id) => direct.selectProbe(id),
+    toggleMeterSound: () => direct.toggleMeterSound(),
     reset: () => {
       if (supportsDirectFan(latest.current.game.jobId)) {
         focusFan();
@@ -817,6 +864,7 @@ function makeScene(host, onSelect, latest, labels) {
       }
       fanView = false;
       bearingView = false;
+      cableView = false;
       controls.maxDistance = 18;
       controls.minDistance = 7;
       camera.position.copy(home);
@@ -854,6 +902,8 @@ export default function Workbench({
   showLabels,
   setShowLabels,
   direct = false,
+  soundEnabled = false,
+  onToggleSound,
   onFallback,
 }) {
   const host = useRef(null),
@@ -870,8 +920,11 @@ export default function Workbench({
     direct,
     pushMode,
     onHud: setHud,
+    soundEnabled,
+    toggleSound: onToggleSound,
     focusFan: () => api.current?.focusFan(),
     focusBearing: () => api.current?.focusBearing(),
+    focusCable: () => api.current?.focusCable(),
   };
   useEffect(() => {
     setPushMode(
@@ -888,6 +941,12 @@ export default function Workbench({
   useEffect(() => {
     api.current?.reset();
   }, [game.jobId]);
+  useEffect(() => {
+    if (direct && game.jobId === "fan-cable" && game.panelOpen && !game.fixed)
+      api.current?.focusCable();
+    else if (direct && game.jobId === "fan-cable" && game.fixed)
+      api.current?.focusFan();
+  }, [direct, game.jobId, game.panelOpen, game.fixed]);
   useEffect(() => {
     if (
       direct &&
@@ -925,6 +984,12 @@ export default function Workbench({
       );
       if (supportsDirectFan(latest.current.game.jobId)) {
         if (
+          latest.current.game.jobId === "fan-cable" &&
+          latest.current.game.panelOpen &&
+          !latest.current.game.fixed
+        )
+          api.current.focusCable();
+        else if (
           latest.current.game.jobId === "fan-bearing" &&
           latest.current.game.repairStep >= 1 &&
           !latest.current.game.fixed
@@ -960,15 +1025,16 @@ export default function Workbench({
                     x2={hud.targets[1].x}
                     y2={hud.targets[1].y}
                   />
-                  {!hud.storage && !hud.fanGuard && !hud.bearing && (
-                    <polygon points={hud.alignmentZone} />
-                  )}
+                  {!hud.storage &&
+                    !hud.fanGuard &&
+                    !hud.bearing &&
+                    !hud.cableRepair && <polygon points={hud.alignmentZone} />}
                 </svg>
               )}
               {hud.targets.map((target) => (
                 <div
                   key={target.id}
-                  className={`mechanic-marker ${target.id === "screw" ? "screw-marker" : ""} ${target.id.startsWith("dust") ? "dust-marker" : ""} ${target.guide ? "guide-marker" : ""} ${hud.canPush && hud.aligned ? "aligned-marker" : ""}`}
+                  className={`mechanic-marker ${target.id === "screw" ? "screw-marker" : ""} ${target.id.startsWith("dust") ? "dust-marker" : ""} ${target.guide ? "guide-marker" : ""} ${target.contact ? "wire-contact-marker" : ""} ${target.id.startsWith("probe-") ? target.id : ""} ${hud.canPush && hud.aligned ? "aligned-marker" : ""}`}
                   title={target.label}
                   data-cleared={target.cleared || false}
                   data-kind={target.id}
@@ -992,24 +1058,35 @@ export default function Workbench({
                       {target.guide ? "注油孔 · 固定" : "胶塞 · 握住移动"}
                     </small>
                   )}
+                  {hud.cableRepair && hud.canPush && (
+                    <small className="connector-marker-label">
+                      {target.guide ? "插座 · 固定" : "接头 · 握住移动"}
+                    </small>
+                  )}
                   <i>
-                    {target.cleared
-                      ? "✓"
-                      : target.id.startsWith("dust")
-                        ? "·"
-                        : target.id === "bearing-spin"
-                          ? "↻"
-                          : target.id === "fan-hold"
-                            ? "☝"
-                            : target.guide
-                              ? "+"
-                              : target.id === "screw"
-                                ? hud.action === "unscrew"
-                                  ? "↺"
-                                  : "↻"
-                                : target.id.startsWith("latch")
-                                  ? "↕"
-                                  : "✥"}
+                    {target.text
+                      ? target.text
+                      : target.id === "probe-red"
+                        ? "红"
+                        : target.id === "probe-black"
+                          ? "黑"
+                          : target.cleared
+                            ? "✓"
+                            : target.id.startsWith("dust")
+                              ? "·"
+                              : target.id === "bearing-spin"
+                                ? "↻"
+                                : target.id === "fan-hold"
+                                  ? "☝"
+                                  : target.guide
+                                    ? "+"
+                                    : target.id === "screw"
+                                      ? hud.action === "unscrew"
+                                        ? "↺"
+                                        : "↻"
+                                      : target.id.startsWith("latch")
+                                        ? "↕"
+                                        : "✥"}
                   </i>
                   {target.axis && (
                     <span
@@ -1049,37 +1126,146 @@ export default function Workbench({
             手动实操 /{" "}
             {hud.action === "screw" || hud.action === "unscrew"
               ? `${Math.round(hud.progress * 720)}° / 720°`
-              : hud.cleaning
-                ? hud.step === 0
-                  ? "固定风扇叶片"
-                  : `积灰清理 ${hud.cleaned} / ${hud.total}`
-                : hud.bearing
-                  ? {
-                      before: "润滑前 · 轻拨检查阻力",
-                      open: "背面检修窗口 · 拔出胶塞",
-                      oil: "注油孔 · 少量点涂",
-                      seal: "胶塞对孔 · 手动压回",
-                      after: "润滑后 · 再次轻拨复查",
-                    }[hud.bearingPhase]
-                  : hud.fanGuard
-                    ? hud.canPush
-                      ? `护网复装 · ${hud.aligned ? "螺孔已对齐" : "先平移对孔"}`
-                      : "拉出并移开前护网"
-                    : hud.storage
-                      ? {
-                          power: "检查供电接头",
-                          release: "按锁扣并拔出数据接头",
-                          insert: "对位并手动推入",
-                          verify: "轻拉确认锁扣固定",
-                        }[hud.storagePhase]
-                      : hud.canPush
-                        ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
-                        : "沿结构操作"}
+              : hud.cableRepair
+                ? {
+                    disconnect: "分离线材两端",
+                    diagnose: "旧线测量 · 查找断路",
+                    "clear-old": "旧线测量完成 · 收回表笔",
+                    "clear-new": "新线复测通过 · 收回表笔",
+                    remove: "分开放置旧线",
+                    prepare: "准备新线 · 两端保持分离",
+                    retest: "新线复测 · 逐根检查",
+                    insert: "接回风扇端 · 主动推入",
+                    source: "接回 USB 端 · 输出关闭",
+                    retain: "轻拉检查固定",
+                  }[hud.cablePhase]
+                : hud.cleaning
+                  ? hud.step === 0
+                    ? "固定风扇叶片"
+                    : `积灰清理 ${hud.cleaned} / ${hud.total}`
+                  : hud.bearing
+                    ? {
+                        before: "润滑前 · 轻拨检查阻力",
+                        open: "背面检修窗口 · 拔出胶塞",
+                        oil: "注油孔 · 少量点涂",
+                        seal: "胶塞对孔 · 手动压回",
+                        after: "润滑后 · 再次轻拨复查",
+                      }[hud.bearingPhase]
+                    : hud.fanGuard
+                      ? hud.canPush
+                        ? `护网复装 · ${hud.aligned ? "螺孔已对齐" : "先平移对孔"}`
+                        : "拉出并移开前护网"
+                      : hud.storage
+                        ? {
+                            power: "检查供电接头",
+                            release: "按锁扣并拔出数据接头",
+                            insert: "对位并手动推入",
+                            verify: "轻拉确认锁扣固定",
+                          }[hud.storagePhase]
+                        : hud.canPush
+                          ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
+                          : "沿结构操作"}
           </span>
           <p>{hud.instruction}</p>
           <div className="mechanic-progress">
             <i style={{ width: `${Math.min(100, hud.progress * 100)}%` }} />
           </div>
+          {hud.cableRepair && (
+            <div className="cable-lesson" data-phase={hud.cablePhase}>
+              {hud.meter && (
+                <div
+                  className="continuity-meter"
+                  aria-label="万用表通断测量面板"
+                >
+                  <div className="meter-display" role="status">
+                    <span>COM · 黑 / VΩ · 红</span>
+                    <output data-testid="meter-reading">
+                      {hud.meterReading}
+                    </output>
+                    <b data-testid="meter-beep">
+                      {hud.meterBeep ? "♪ 蜂鸣 · 低电阻" : "无蜂鸣"}
+                    </b>
+                  </div>
+                  <div className="meter-selector" aria-label="万用表档位选择">
+                    {[
+                      ["off", "OFF"],
+                      ["voltage", "V⎓"],
+                      ["continuity", "Ω / 蜂鸣"],
+                      ["current", "A"],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        aria-pressed={hud.meterMode === value}
+                        onClick={() => api.current?.setMeterMode(value)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="meter-evidence">
+                    <span className={hud.selfChecked ? "verified" : ""}>
+                      {hud.selfChecked ? "✓" : "○"} 短接表笔自检
+                    </span>
+                    <span>A+ ↔ B+：{hud.cableChecks.plus || "未测"}</span>
+                    <span>A− ↔ B−：{hud.cableChecks.minus || "未测"}</span>
+                  </div>
+                  <div className="mechanic-buttons probe-fine-controls">
+                    {[
+                      ["red", "微调红笔"],
+                      ["black", "微调黑笔"],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        className={hud.activeProbe === id ? "active" : ""}
+                        aria-pressed={hud.activeProbe === id}
+                        onClick={() => api.current?.selectProbe(id)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    {[
+                      ["←", -1, 0],
+                      ["↑", 0, -1],
+                      ["↓", 0, 1],
+                      ["→", 1, 0],
+                    ].map(([label, dx, dy]) => (
+                      <button
+                        key={label}
+                        aria-label={`表笔微调${label}`}
+                        onClick={() => api.current?.nudgePart(dx, dy)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <small>选中后也可用方向键小步移动</small>
+                  </div>
+                </div>
+              )}
+              <div className="mechanic-buttons">
+                <button onClick={() => api.current?.focusCable()}>
+                  线材近景
+                </button>
+                {hud.meter && (
+                  <button
+                    aria-pressed={hud.meterSound}
+                    onClick={() => api.current?.toggleMeterSound()}
+                  >
+                    {hud.meterSound ? "蜂鸣声音：开" : "蜂鸣声音：关"}
+                  </button>
+                )}
+                <small>
+                  {hud.meter
+                    ? "握住红 / 黑表笔移动 · 松手保持接触 · 不会吸附"
+                    : "测试电源输出关闭 · 对位不会自动接通"}
+                </small>
+              </div>
+              <p>
+                同一根导线要测两头：A+ 对 B+，A− 对 B−。OL
+                表示超出量程；表笔悬空也会显示
+                OL，必须结合接触位置与仪表自检判断。
+              </p>
+            </div>
+          )}
           {hud.storage && (
             <p className="connector-state" role="status">
               {hud.connectionState}
@@ -1163,22 +1349,28 @@ export default function Workbench({
                     ? hud.positionAligned
                       ? "✓ 螺孔对准"
                       : "○ 螺孔需微调"
-                    : hud.bearing
+                    : hud.cableRepair
                       ? hud.positionAligned
-                        ? "✓ 胶塞对孔"
-                        : "○ 胶塞需微调"
-                      : hud.positionAligned
-                        ? "✓ 位置对准"
-                        : "○ 位置需微调"}
+                        ? "✓ 接头对准"
+                        : "○ 接头需微调"
+                      : hud.bearing
+                        ? hud.positionAligned
+                          ? "✓ 胶塞对孔"
+                          : "○ 胶塞需微调"
+                        : hud.positionAligned
+                          ? "✓ 位置对准"
+                          : "○ 位置需微调"}
                 </span>
                 <span>
                   {hud.fanGuard
                     ? "✓ 保持护网朝向"
-                    : hud.bearing
-                      ? "✓ 保持胶塞朝向"
-                      : hud.directionAligned
-                        ? "✓ 缺口方向正确"
-                        : "○ 按 R 检查方向"}
+                    : hud.cableRepair
+                      ? "✓ 保持凸键朝向"
+                      : hud.bearing
+                        ? "✓ 保持胶塞朝向"
+                        : hud.directionAligned
+                          ? "✓ 缺口方向正确"
+                          : "○ 按 R 检查方向"}
                 </span>
                 <span>仍需手动推到底</span>
               </div>
@@ -1198,11 +1390,13 @@ export default function Workbench({
                 >
                   平移对位
                 </button>
-                {hud.action === "repair" && !hud.bearing && (
-                  <button onClick={() => api.current?.rotatePart()}>
-                    旋转 90° <small>R</small>
-                  </button>
-                )}
+                {hud.action === "repair" &&
+                  !hud.bearing &&
+                  !hud.cableRepair && (
+                    <button onClick={() => api.current?.rotatePart()}>
+                      旋转 90° <small>R</small>
+                    </button>
+                  )}
               </div>
               <div
                 className="mechanic-nudge"
@@ -1225,18 +1419,20 @@ export default function Workbench({
                   </button>
                 ))}
                 <small>也可用键盘方向键</small>
-                {hud.action === "repair" && !hud.bearing && (
-                  <button
-                    className="memory-focus"
-                    onClick={() =>
-                      hud.storage
-                        ? api.current?.focusStorage()
-                        : api.current?.focusMemory()
-                    }
-                  >
-                    维修近景
-                  </button>
-                )}
+                {hud.action === "repair" &&
+                  !hud.bearing &&
+                  !hud.cableRepair && (
+                    <button
+                      className="memory-focus"
+                      onClick={() =>
+                        hud.storage
+                          ? api.current?.focusStorage()
+                          : api.current?.focusMemory()
+                      }
+                    >
+                      维修近景
+                    </button>
+                  )}
               </div>
             </>
           )}

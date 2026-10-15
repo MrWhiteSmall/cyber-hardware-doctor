@@ -3537,6 +3537,106 @@ h1 > span {
   color: #77846b;
   margin: 8px 0 0;
 }
+
+.cable-lesson > p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.continuity-meter {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(140px, 1fr);
+  gap: 10px;
+  margin: 10px 0;
+  padding: 12px;
+  background: #e6e9dc;
+  border: 1px solid #cbd2be;
+  border-radius: 8px;
+}
+.meter-display {
+  display: grid;
+  gap: 3px;
+  padding: 8px 12px;
+  color: #2c4439;
+  background: #d4ddc6;
+  border: 1px solid #b6c2a9;
+  border-radius: 4px;
+}
+.meter-display > span,
+.meter-display > b {
+  font-size: 10px;
+  font-weight: 500;
+}
+.meter-display output {
+  font:
+    500 26px "DM Mono",
+    monospace;
+}
+.meter-selector {
+  display: grid;
+  pointer-events: auto;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+.meter-selector button {
+  border: 1px solid #bdc7b1;
+  border-radius: 4px;
+  background: #f7f7ed;
+  color: #52644b;
+  font: 500 11px var(--mono);
+  padding: 7px 6px;
+}
+.meter-selector button[aria-pressed="true"] {
+  background: #496b55;
+  color: #fffdf0;
+  border-color: #496b55;
+}
+.meter-evidence {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px 14px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: #6e7e63;
+}
+.meter-evidence .verified {
+  color: #3e704d;
+}
+.probe-fine-controls {
+  grid-column: 1 / -1;
+}
+.mechanic-marker.probe-red,
+.mechanic-marker.probe-black {
+  width: 28px;
+  height: 28px;
+  border-color: #ba5945;
+  color: #9f3f2e;
+  background: #fff0e8;
+}
+.mechanic-marker.probe-black {
+  border-color: #354d48;
+  color: #273f39;
+  background: #e7ede5;
+}
+.mechanic-marker.wire-contact-marker {
+  width: 23px;
+  height: 23px;
+  border: 1px solid #bba35c;
+  background: #fbf4d8;
+  color: #746338;
+}
+.mechanic-marker.wire-contact-marker > i {
+  font-size: 9px;
+  opacity: 1;
+}
+@media (max-width: 600px) {
+  .continuity-meter {
+    gap: 7px;
+    padding: 8px;
+    grid-template-columns: minmax(110px, 1fr) minmax(120px, 1fr);
+  }
+}
 .connector-lesson > div {
   display: flex;
   align-items: center;

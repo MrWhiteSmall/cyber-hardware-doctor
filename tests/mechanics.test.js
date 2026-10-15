@@ -10,17 +10,19 @@ import {
   pullConnector,
   bearingCoast,
   validOilDrop,
+  cableContinuity,
 } from "../src/mechanics.js";
 import { isDirectAction, supportsDirectJob } from "../src/DirectPC.js";
 import { createGame } from "../src/game.js";
 
-test("前五关的拆装必须在手动模式操作，其余工单仍标为辅助教学", () => {
+test("前六关的拆装必须在手动模式操作，其余工单仍标为辅助教学", () => {
   for (const id of [
     "memory",
     "cooling",
     "storage",
     "fan-dust",
     "fan-bearing",
+    "fan-cable",
   ]) {
     assert.equal(supportsDirectJob(id), true);
     const s = { ...createGame(id), unplugged: true, grounded: true };
@@ -39,14 +41,16 @@ test("前五关的拆装必须在手动模式操作，其余工单仍标为辅�
                 ? "storage"
                 : id === "fan-dust"
                   ? "fanBlade"
-                  : "fanMotor",
+                  : id === "fan-bearing"
+                    ? "fanMotor"
+                    : "fanCable",
         ],
       }),
       true,
     );
     assert.equal(isDirectAction(createGame(id)), false, "安全准备保留界面操作");
   }
-  assert.equal(supportsDirectJob("fan-cable"), false);
+  assert.equal(supportsDirectJob("keyboard-clean"), false);
 });
 
 test("同样轻拨时润滑后的阻力更小，惯性计算不受帧率影响", () => {
@@ -120,4 +124,38 @@ test("方向或横向位置不对会阻挡插入；不能用反向拖动穿透",
     assert.equal(next.seated, false);
   }
   assert.equal(pushPart({ x: 0, y: 0, z: 1.8 }, 0, -2).z, 1.8);
+});
+
+test("通断证据区分档位、分离、自检、同端和跨导体，并能检出旧线断路", () => {
+  const base = {
+    mode: "continuity",
+    isolated: true,
+    red: { end: "a", net: "plus" },
+    black: { end: "b", net: "plus" },
+    replacement: false,
+  };
+  assert.equal(cableContinuity({ ...base, mode: "off" }).kind, "off");
+  assert.equal(cableContinuity({ ...base, mode: "current" }).kind, "mode");
+  assert.equal(cableContinuity({ ...base, isolated: false }).kind, "connected");
+  assert.equal(cableContinuity({ ...base, red: null }).kind, "air");
+  assert.equal(
+    cableContinuity({ ...base, black: { end: "b", net: "minus" } }).kind,
+    "cross",
+  );
+  assert.equal(cableContinuity({ ...base, black: base.red }).kind, "same");
+  assert.equal(cableContinuity({ ...base, shorted: true }).beep, true);
+  assert.equal(cableContinuity(base).kind, "open");
+  assert.equal(cableContinuity({ ...base, replacement: true }).kind, "closed");
+  assert.equal(
+    cableContinuity({
+      ...base,
+      red: { end: "b", net: "minus" },
+      black: { end: "a", net: "minus" },
+    }).beep,
+    true,
+  );
+  assert.equal(
+    cableContinuity({ ...base, red: base.black, black: base.red }).kind,
+    "open",
+  );
 });
