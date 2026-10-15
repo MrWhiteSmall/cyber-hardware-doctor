@@ -3380,6 +3380,23 @@ h1 > span {
   pointer-events: none;
   z-index: 4;
 }
+.alignment-guide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.alignment-guide line {
+  stroke: #c28a54;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+.alignment-guide polygon {
+  fill: #5b976c33;
+  stroke: #468363;
+  stroke-width: 1.5;
+}
 .mechanic-marker {
   position: absolute;
   transform: translate(-50%, -50%);
@@ -3442,6 +3459,53 @@ h1 > span {
   box-shadow: none;
   z-index: -1;
 }
+.mechanic-marker.aligned-marker {
+  border-color: #468363;
+  color: #468363;
+  background: #deeddf88;
+}
+.alignment-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin-top: 9px;
+  font-size: 10px;
+  color: #a16d40;
+}
+.alignment-status.ready {
+  color: #468363;
+}
+.mechanic-nudge {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+  pointer-events: auto;
+  color: #718264;
+  font-size: 10px;
+}
+.mechanic-nudge button {
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid #d2dbc6;
+  border-radius: 4px;
+  background: #f0f3e6;
+  color: #526f55;
+  font-size: 15px;
+}
+.mechanic-nudge button:active {
+  background: #dce7d2;
+}
+.mechanic-nudge small {
+  margin-left: 3px;
+  font-size: 9px;
+}
+.mechanic-nudge .memory-focus {
+  font-size: 10px;
+  padding: 0 8px;
+  margin-left: auto;
+}
 .guide-marker > i {
   font-size: 15px;
 }
@@ -3487,6 +3551,7 @@ h1 > span {
 }
 .mechanic-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
   pointer-events: auto;
@@ -3514,11 +3579,29 @@ h1 > span {
 }
 .direct-active {
   cursor: grab;
+  height: auto;
+  padding-bottom: 44px;
+}
+.direct-active .scene-host {
+  position: relative;
+  height: 430px;
+}
+.direct-active .mechanic-hud {
+  position: relative;
+  inset: auto;
+  max-width: none;
+  margin: 0 12px 8px;
+}
+.direct-active .bench-caption {
+  display: none;
 }
 .direct-active:active {
   cursor: grabbing;
 }
 @media (max-width: 660px) {
+  .direct-active .scene-host {
+    height: 380px;
+  }
   .operation-mode {
     font-size: 8px;
     gap: 6px;

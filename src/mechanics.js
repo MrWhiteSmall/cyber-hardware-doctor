@@ -1,4 +1,5 @@
 export const TAU = Math.PI * 2;
+export const ALIGNMENT_TOLERANCE = 0.12;
 export function angleDelta(previous, next) {
   return Math.atan2(Math.sin(next - previous), Math.cos(next - previous));
 }
@@ -8,7 +9,7 @@ export function turnScrew(current, delta, tightening) {
     Math.min(TAU * 2, current + delta * (tightening ? 1 : -1)),
   );
 }
-export function aligned(position, angle, tolerance = 0.12) {
+export function aligned(position, angle, tolerance = ALIGNMENT_TOLERANCE) {
   const rotation = Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle)));
   return (
     Math.abs(position.x) < tolerance &&

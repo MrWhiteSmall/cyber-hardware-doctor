@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import { objective } from "./game.js";
-import { TAU, angleDelta, turnScrew, aligned, pushPart } from "./mechanics.js";
+import {
+  TAU,
+  ALIGNMENT_TOLERANCE,
+  angleDelta,
+  turnScrew,
+  aligned,
+  pushPart,
+} from "./mechanics.js";
 
 export const isDirectAction = (game) =>
   game.jobId === "memory" &&
@@ -159,7 +166,9 @@ export function createDirectMemory({
           new THREE.Vector3(0.67 + pose.x, 3.65 + pose.y, 0.16 + pose.z),
           game.repairStep === 1
             ? "沿箭头平直取出"
-            : "拖动对齐 · R 旋转 · Shift＋拖动推入",
+            : latest.current.pushMode
+              ? "沿箭头拖动推入"
+              : "平移对位 · 方向键微调",
           new THREE.Vector3(0, 0, game.repairStep === 1 ? 1 : -1),
         ),
       ];
@@ -206,7 +215,6 @@ export function createDirectMemory({
       pose: { ...objectPose },
       angle: Math.atan2(point.y - hit.y, point.x - hit.x),
       center: { x: hit.x, y: hit.y },
-      push: e.shiftKey || latest.current.pushMode,
       plane: planePoint(point, hit.world.z),
       done: false,
     };
@@ -265,7 +273,7 @@ export function createDirectMemory({
       g.done = cover.x <= -1.6;
     } else {
       const object = g.id === "cover" ? cover : pose;
-      if (g.push) {
+      if (e.shiftKey || latest.current.pushMode) {
         const a = g.axis;
         if (!a || Math.hypot(a.x, a.y) < 8) {
           note = "视角与插入方向重合，请旋转一下视角，让轴线可见。";
@@ -277,7 +285,7 @@ export function createDirectMemory({
         const next = pushPart(object, g.id === "ram" ? angle : 0, distance);
         if (next.blocked) {
           note =
-            "对位不正确：先松开鼠标，平移对齐，再检查方向。不会自动吸附或硬压入。";
+            "对位不正确：用方向键或下方箭头微调到绿色，检查缺口方向，再沿箭头推入。";
         } else {
           Object.assign(object, { x: next.x, y: next.y, z: next.z });
           note = next.seated
@@ -293,8 +301,8 @@ export function createDirectMemory({
         object.y = g.pose.y + p.y - g.plane.y;
         progress = 0;
         note = aligned(object, g.id === "ram" ? angle : 0)
-          ? "横向与角度已对齐，但还没连接。松开后，按住 Shift 再沿箭头推入。"
-          : "保持零件平直，手动对齐插槽与缺口。";
+          ? "已对准。切换「沿槽推入」，再沿箭头拖动压入；也可按住 Shift 拖动。"
+          : "将橙色握持点移向绿色十字；方向键或下方箭头可小步微调。";
       }
     }
     g.previous = point;
@@ -330,11 +338,63 @@ export function createDirectMemory({
     angle += Math.PI / 2;
     note = "方向已旋转 90°。缺口方向不对时，插槽会阻挡压入。";
   }
+  function nudge(dx, dy) {
+    if (!active || gesture) return;
+    const game = latest.current.game,
+      goal = objective(game);
+    if (
+      goal.action !== "close" &&
+      !(goal.action === "repair" && game.repairStep === 2)
+    )
+      return;
+    if (game.tool !== goal.tool) {
+      note = "先选择「拆装」工具，再握住零件微调。";
+      return;
+    }
+    const object = goal.action === "close" ? cover : pose;
+    // Use the same ray/plane mapping as dragging so arrows follow the screen,
+    // even after orbiting. Small fixed world steps avoid pixel-perfect aiming.
+    const world = new THREE.Vector3(
+      goal.action === "close" ? object.x : 0.67 + object.x,
+      (goal.action === "close" ? 2.7 : 3.65) + object.y,
+      (goal.action === "close" ? 1.25 : 0.16) + object.z,
+    );
+    const point = projection(world),
+      start = planePoint(point, world.z),
+      end = planePoint({ x: point.x + dx, y: point.y + dy }, world.z);
+    if (!start || !end) return;
+    const delta = end.sub(start).setLength(0.04);
+    object.x += delta.x;
+    object.y += delta.y;
+    progress = 0;
+    note = aligned(object, goal.action === "close" ? 0 : angle)
+      ? "已对准，仍未连接。沿槽推入模式下，握住标记沿箭头拖动压到底。"
+      : "小步调整中：把握持点移进绿色参考区；微调不会自动插入。";
+  }
+  function arrowKey(e) {
+    if (!active || e.target.closest('input,textarea,[role="dialog"]')) return;
+    const direction = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    }[e.key];
+    if (!direction) return;
+    const goal = objective(latest.current.game);
+    if (
+      goal.action !== "close" &&
+      !(goal.action === "repair" && latest.current.game.repairStep === 2)
+    )
+      return;
+    e.preventDefault();
+    nudge(...direction);
+  }
   canvas.addEventListener("pointerdown", begin, true);
   canvas.addEventListener("pointermove", move, true);
   canvas.addEventListener("pointerup", finish, true);
   canvas.addEventListener("pointercancel", finish, true);
   window.addEventListener("keydown", rotate);
+  window.addEventListener("keydown", arrowKey);
   return {
     update(time) {
       const game = latest.current.game,
@@ -412,6 +472,7 @@ export function createDirectMemory({
           }
         }
         ghost.visible = goal.action === "repair" && game.repairStep === 2;
+        ghost.material.color.set(aligned(pose, angle) ? "#57946d" : "#d48f5d");
       }
       panel.updateMatrixWorld(true);
       ram.updateMatrixWorld(true);
@@ -438,15 +499,49 @@ export function createDirectMemory({
                       : goal.action === "open"
                         ? "握住侧板标记，沿水平方向平移取下。"
                         : goal.action === "close"
-                          ? "拖动侧板对齐原位，再按住 Shift 沿箭头推回。"
+                          ? "先平移侧板对齐参考区，再切换「沿槽推入」沿箭头拖动。"
                           : game.repairStep === 0
                             ? "分别握住两个卡扣，沿箭头向外拨开。"
                             : game.repairStep === 1
                               ? "握住内存，沿箭头方向平直取出。"
                               : game.repairStep === 2
-                                ? "拖动内存自由对位，R 旋转；对齐后按住 Shift 沿箭头推入。"
+                                ? latest.current.pushMode
+                                  ? "已保持拔出时的对位。握住内存标记，沿箭头拖动推入，无需按 Shift。"
+                                  : "把握持点移向绿色十字，方向键可微调；对准后切换「沿槽推入」。"
                                 : "分别将两个卡扣向内拨回，逐个确认锁紧。"),
-                aligned: aligned(pose, angle),
+                aligned: aligned(
+                  goal.action === "close" ? cover : pose,
+                  goal.action === "close" ? 0 : angle,
+                ),
+                positionAligned: aligned(
+                  goal.action === "close" ? cover : pose,
+                  0,
+                ),
+                directionAligned: aligned(
+                  { x: 0, y: 0 },
+                  goal.action === "close" ? 0 : angle,
+                ),
+                alignmentZone: [
+                  [-1, -1],
+                  [1, -1],
+                  [1, 1],
+                  [-1, 1],
+                ]
+                  .map(([x, y]) => {
+                    const p = projection(
+                      new THREE.Vector3(
+                        (goal.action === "close" ? 0 : 0.67) +
+                          x * ALIGNMENT_TOLERANCE,
+                        (goal.action === "close" ? 2.7 : 3.65) +
+                          y * ALIGNMENT_TOLERANCE,
+                        goal.action === "close"
+                          ? 1.25 + cover.z
+                          : 0.16 + pose.z,
+                      ),
+                    );
+                    return `${p.x},${p.y}`;
+                  })
+                  .join(" "),
                 angle: Math.round(((angle % TAU) / Math.PI) * 180),
                 canPush:
                   goal.action === "close" ||
@@ -459,12 +554,14 @@ export function createDirectMemory({
     rotate: () => {
       angle += Math.PI / 2;
     },
+    nudge,
     dispose: () => {
       canvas.removeEventListener("pointerdown", begin, true);
       canvas.removeEventListener("pointermove", move, true);
       canvas.removeEventListener("pointerup", finish, true);
       canvas.removeEventListener("pointercancel", finish, true);
       window.removeEventListener("keydown", rotate);
+      window.removeEventListener("keydown", arrowKey);
       scene.remove(tool, ghost);
     },
   };

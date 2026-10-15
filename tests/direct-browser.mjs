@@ -96,10 +96,84 @@ try {
   p = await marker("ram");
   await page.mouse.click(p.x, p.y);
   expect((await state()).repairStep).toBe(2);
+  await expect(page.getByRole("button", { name: "沿槽推入" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  // A novice's natural drag should follow the slot, without a hidden Shift requirement.
+  await drag(p, { x: p.x + p.ax * 0.3, y: p.y + p.ay * 0.3 });
+  expect((await state()).repairStep).toBe(2);
+  const progressWidth = () =>
+    page
+      .locator(".mechanic-progress > i")
+      .evaluate((el) => parseFloat(el.style.width));
+  expect(await progressWidth()).toBeGreaterThan(10);
+  await page.getByRole("button", { name: "平移对位", exact: true }).click();
+  // Arrow keys still work after a mode button has keyboard focus.
+  for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowRight");
+  await expect(page.locator(".alignment-status")).toContainText("位置需微调");
+  for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowLeft");
+  await expect(page.locator(".alignment-status.ready")).toBeVisible();
+  p = await marker("ram");
+  await drag(p, { x: p.x + 18, y: p.y - 15 });
+  await expect(page.locator(".alignment-status")).toContainText("位置需微调");
+  await page.getByRole("button", { name: "沿槽推入" }).click();
+  p = await marker("ram");
+  await drag(p, { x: p.x + p.ax * 3, y: p.y + p.ay * 3 });
+  expect((await state()).repairStep).toBe(2);
+  await expect(page.locator(".mechanic-hud")).toContainText("对位不正确");
+  await page.screenshot({
+    path: "artifacts/memory-alignment-guide.png",
+    fullPage: true,
+  });
+  // Recover from actual misalignment with the screen-relative fine controls.
+  for (let i = 0; i < 80; i++) {
+    if (await page.locator(".alignment-status.ready").count()) break;
+    const grip = await marker("ram"),
+      guide = await marker("ram-guide");
+    const dx = guide.x - grip.x,
+      dy = guide.y - grip.y;
+    const name =
+      Math.abs(dx) > Math.abs(dy)
+        ? dx > 0
+          ? "向右微调"
+          : "向左微调"
+        : dy > 0
+          ? "向下微调"
+          : "向上微调";
+    await page.getByRole("button", { name, exact: true }).click();
+    await page.waitForTimeout(90);
+  }
+  await expect(page.locator(".alignment-status.ready")).toBeVisible();
+  expect((await state()).repairStep).toBe(2);
+  console.log(
+    "PASS default axial drag and recover from misalignment without snapping",
+  );
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.waitForTimeout(150);
+  await page.locator(".scene-shell").scrollIntoViewIfNeeded();
+  await expect(page.getByRole("button", { name: "向左微调" })).toBeInViewport();
+  p = await marker("ram");
+  expect(
+    await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.tagName,
+      p,
+    ),
+  ).toBe("CANVAS");
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await page.screenshot({
+    path: "artifacts/memory-controls-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  await page.waitForTimeout(150);
+  await page.locator(".scene-shell").scrollIntoViewIfNeeded();
   await page.keyboard.press("r");
   await page.waitForTimeout(150);
   p = await marker("ram");
-  await drag(p, { x: p.x + p.ax * 3, y: p.y + p.ay * 3 }, true);
+  await drag(p, { x: p.x + p.ax * 3, y: p.y + p.ay * 3 });
   expect((await state()).repairStep).toBe(2);
   await expect(page.locator(".mechanic-hud")).toContainText("对位不正确");
   await page.screenshot({
@@ -107,9 +181,10 @@ try {
     fullPage: true,
   });
   for (let i = 0; i < 3; i++) await page.keyboard.press("r");
+  await page.getByRole("button", { name: "维修近景" }).click();
   await page.waitForTimeout(150);
   p = await marker("ram");
-  await drag(p, { x: p.x + p.ax * 3, y: p.y + p.ay * 3 }, true);
+  await drag(p, { x: p.x + p.ax * 3, y: p.y + p.ay * 3 });
   await expect.poll(async () => (await state()).repairStep).toBe(3);
   for (let i = 0; i < 2; i++) {
     p = await marker(`latch${i}`);

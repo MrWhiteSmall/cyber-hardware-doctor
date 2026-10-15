@@ -672,6 +672,12 @@ function makeScene(host, onSelect, latest, labels) {
   });
   return {
     rotatePart: () => direct.rotate(),
+    nudgePart: (dx, dy) => direct.nudge(dx, dy),
+    focusMemory: () => {
+      controls.target.set(0.67, 3.65, 0.8);
+      camera.position.copy(controls.target).add(new THREE.Vector3(3.2, 1.2, 7));
+      controls.update();
+    },
     reset: () => {
       camera.position.copy(home);
       controls.target.set(0, 2.55, 0);
@@ -719,6 +725,13 @@ export default function Workbench({
     [pushMode, setPushMode] = useState(false);
   latest.current = { game, act, exploded, direct, pushMode, onHud: setHud };
   useEffect(() => {
+    setPushMode(direct && game.repairStep === 2 && !game.fixed);
+  }, [direct, game.jobId, game.repairStep, game.panelOpen, game.fixed]);
+  useEffect(() => {
+    // Return from the RAM close-up so the removed side panel is reachable again.
+    if (direct && game.fixed) api.current?.reset();
+  }, [direct, game.fixed]);
+  useEffect(() => {
     try {
       api.current = makeScene(
         host.current,
@@ -746,10 +759,21 @@ export default function Workbench({
         {direct && hud && (
           <>
             <div className="mechanic-targets">
+              {hud.canPush && hud.targets.length === 2 && (
+                <svg className="alignment-guide" aria-hidden="true">
+                  <line
+                    x1={hud.targets[0].x}
+                    y1={hud.targets[0].y}
+                    x2={hud.targets[1].x}
+                    y2={hud.targets[1].y}
+                  />
+                  <polygon points={hud.alignmentZone} />
+                </svg>
+              )}
               {hud.targets.map((target) => (
                 <div
                   key={target.id}
-                  className={`mechanic-marker ${target.id === "screw" ? "screw-marker" : ""} ${target.guide ? "guide-marker" : ""}`}
+                  className={`mechanic-marker ${target.id === "screw" ? "screw-marker" : ""} ${target.guide ? "guide-marker" : ""} ${hud.canPush && hud.aligned ? "aligned-marker" : ""}`}
                   data-kind={target.id}
                   data-axis-x={target.axis?.x || 0}
                   data-axis-y={target.axis?.y || 0}
@@ -780,36 +804,6 @@ export default function Workbench({
                 </div>
               ))}
             </div>
-            <div className="mechanic-hud">
-              <span>
-                手动实操 /{" "}
-                {hud.action === "screw" || hud.action === "unscrew"
-                  ? `${Math.round(hud.progress * 720)}° / 720°`
-                  : hud.action === "repair" && hud.step === 2
-                    ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
-                    : "沿结构操作"}
-              </span>
-              <p>{hud.instruction}</p>
-              <div className="mechanic-progress">
-                <i style={{ width: `${Math.min(100, hud.progress * 100)}%` }} />
-              </div>
-              {hud.canPush && (
-                <div className="mechanic-buttons">
-                  <button
-                    className={pushMode ? "active" : ""}
-                    onClick={() => setPushMode(!pushMode)}
-                  >
-                    {pushMode ? "推入模式：开" : "推入模式：关"}
-                    <small>也可按住 Shift 拖动</small>
-                  </button>
-                  {hud.action === "repair" && (
-                    <button onClick={() => api.current?.rotatePart()}>
-                      旋转 90° <small>R</small>
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
           </>
         )}
         {showLabels &&
@@ -829,6 +823,90 @@ export default function Workbench({
               </button>
             ))}
       </div>
+      {direct && hud && (
+        <div className="mechanic-hud">
+          <span>
+            手动实操 /{" "}
+            {hud.action === "screw" || hud.action === "unscrew"
+              ? `${Math.round(hud.progress * 720)}° / 720°`
+              : hud.canPush
+                ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
+                : "沿结构操作"}
+          </span>
+          <p>{hud.instruction}</p>
+          <div className="mechanic-progress">
+            <i style={{ width: `${Math.min(100, hud.progress * 100)}%` }} />
+          </div>
+          {hud.canPush && (
+            <>
+              <div
+                className={`alignment-status ${hud.aligned ? "ready" : ""}`}
+                role="status"
+              >
+                <span>
+                  {hud.positionAligned ? "✓ 位置对准" : "○ 位置需微调"}
+                </span>
+                <span>
+                  {hud.directionAligned ? "✓ 缺口方向正确" : "○ 按 R 检查方向"}
+                </span>
+                <span>仍需手动推到底</span>
+              </div>
+              <div className="mechanic-buttons">
+                <button
+                  className={pushMode ? "active" : ""}
+                  aria-pressed={pushMode}
+                  onClick={() => setPushMode(true)}
+                >
+                  沿槽推入
+                  <small>沿箭头拖动</small>
+                </button>
+                <button
+                  className={!pushMode ? "active" : ""}
+                  aria-pressed={!pushMode}
+                  onClick={() => setPushMode(false)}
+                >
+                  平移对位
+                </button>
+                {hud.action === "repair" && (
+                  <button onClick={() => api.current?.rotatePart()}>
+                    旋转 90° <small>R</small>
+                  </button>
+                )}
+              </div>
+              <div
+                className="mechanic-nudge"
+                role="group"
+                aria-label="位置微调"
+              >
+                <span>微调</span>
+                {[
+                  ["←", -1, 0, "向左微调"],
+                  ["↑", 0, -1, "向上微调"],
+                  ["↓", 0, 1, "向下微调"],
+                  ["→", 1, 0, "向右微调"],
+                ].map(([label, dx, dy, name]) => (
+                  <button
+                    key={name}
+                    aria-label={name}
+                    onClick={() => api.current?.nudgePart(dx, dy)}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <small>也可用键盘方向键</small>
+                {hud.action === "repair" && (
+                  <button
+                    className="memory-focus"
+                    onClick={() => api.current?.focusMemory()}
+                  >
+                    维修近景
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <div className="bench-caption">
         <span className="tiny-cross">+</span> WORKBENCH — 01{" "}
         <span className="tiny-cross">+</span>
