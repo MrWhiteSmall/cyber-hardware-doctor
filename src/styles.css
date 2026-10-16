@@ -3538,6 +3538,7 @@ h1 > span {
   margin: 8px 0 0;
 }
 
+.keyboard-lesson > p,
 .cable-lesson > p {
   margin: 9px 0 0;
   color: var(--muted);

@@ -5,6 +5,7 @@ import { createStorageRepair } from "./StorageRepair.js";
 import { createFanRepair } from "./FanRepair.js";
 import { createBearingRepair } from "./BearingRepair.js";
 import { createCableRepair } from "./CableRepair.js";
+import { createKeyboardRepair } from "./KeyboardRepair.js";
 import {
   TAU,
   ALIGNMENT_TOLERANCE,
@@ -17,7 +18,8 @@ import {
 export const supportsDirectFan = (id) =>
   ["fan-dust", "fan-bearing", "fan-cable"].includes(id);
 export const supportsDirectJob = (id) =>
-  ["memory", "cooling", "storage"].includes(id) || supportsDirectFan(id);
+  ["memory", "cooling", "storage", "keyboard-clean"].includes(id) ||
+  supportsDirectFan(id);
 export const isDirectAction = (game) =>
   supportsDirectJob(game.jobId) &&
   ["unscrew", "screw", "open", "close", "repair"].includes(
@@ -37,6 +39,7 @@ export function createDirectPC({
   dustPatches,
   storageRig,
   fanRig,
+  keyboardRig,
   latest,
 }) {
   let key = "",
@@ -144,6 +147,13 @@ export function createDirectPC({
     planePoint,
     latest,
   });
+  const keyboard = createKeyboardRepair({
+    rig: keyboardRig,
+    scene,
+    target,
+    planePoint,
+    latest,
+  });
   const fanHelper = (id) =>
     id === "fan-cable" ? wire : id === "fan-bearing" ? bearing : fanCleaning;
   const fanCleaning = createCoolingRepair({
@@ -157,6 +167,7 @@ export function createDirectPC({
     holdPoint: new THREE.Vector3(0.3, 3.97, 0.76),
   });
   function targets(game, goal) {
+    if (game.jobId === "keyboard-clean") return keyboard.targets(game);
     if (goal.action === "unscrew" || goal.action === "screw") {
       const deviceScrews = supportsDirectFan(game.jobId)
         ? fanRig.screws
@@ -283,18 +294,21 @@ export function createDirectPC({
     if (goal.action === "repair")
       latest.current.act(
         "select",
-        game.jobId === "fan-cable"
-          ? "fanCable"
-          : game.jobId === "fan-bearing"
-            ? "fanMotor"
-            : game.jobId === "fan-dust"
-              ? "fanBlade"
-              : game.jobId === "cooling"
-                ? "cooler"
-                : game.jobId === "storage"
-                  ? "storage"
-                  : "ram",
+        game.jobId === "keyboard-clean"
+          ? "keycap"
+          : game.jobId === "fan-cable"
+            ? "fanCable"
+            : game.jobId === "fan-bearing"
+              ? "fanMotor"
+              : game.jobId === "fan-dust"
+                ? "fanBlade"
+                : game.jobId === "cooling"
+                  ? "cooler"
+                  : game.jobId === "storage"
+                    ? "storage"
+                    : "ram",
       );
+    if (game.jobId === "keyboard-clean") keyboard.begin(hit, point);
     if (game.jobId === "cooling" && goal.action === "repair")
       cooling.begin(hit, point);
     if (game.jobId === "storage" && goal.action === "repair")
@@ -320,6 +334,8 @@ export function createDirectPC({
     note = "";
   }
   function move(e) {
+    if (active && latest.current.game.jobId === "keyboard-clean")
+      keyboard.hover(local(e));
     if (active && latest.current.game.jobId === "cooling")
       cooling.hover(local(e));
     if (active && latest.current.game.jobId === "fan-dust")
@@ -333,7 +349,9 @@ export function createDirectPC({
       goal = objective(game),
       point = local(e),
       g = gesture;
-    if (game.jobId === "fan-cable" && goal.action === "repair") {
+    if (game.jobId === "keyboard-clean") {
+      keyboard.move(point, e.shiftKey);
+    } else if (game.jobId === "fan-cable" && goal.action === "repair") {
       wire.move(point, e.shiftKey);
     } else if (game.jobId === "fan-bearing" && goal.action === "repair") {
       bearing.move(point, e.shiftKey);
@@ -438,6 +456,11 @@ export function createDirectPC({
     controls.enabled = true;
     if (canvas.hasPointerCapture(e.pointerId))
       canvas.releasePointerCapture(e.pointerId);
+    if (game.jobId === "keyboard-clean") {
+      if (keyboard.finish(e.type === "pointercancel"))
+        latest.current.act("repair");
+      return;
+    }
     if (
       supportsDirectFan(game.jobId) &&
       ["repair", "open", "close"].includes(goal.action)
@@ -496,6 +519,10 @@ export function createDirectPC({
     if (!active || gesture) return;
     const game = latest.current.game,
       goal = objective(game);
+    if (game.jobId === "keyboard-clean") {
+      keyboard.nudge(dx, dy);
+      return;
+    }
     if (supportsDirectFan(game.jobId)) {
       (game.jobId === "fan-cable" && goal.action === "repair"
         ? wire
@@ -552,6 +579,11 @@ export function createDirectPC({
     }[e.key];
     if (!direction) return;
     const goal = objective(latest.current.game);
+    if (latest.current.game.jobId === "keyboard-clean") {
+      e.preventDefault();
+      nudge(...direction);
+      return;
+    }
     if (
       ["fan-bearing", "fan-cable"].includes(latest.current.game.jobId) &&
       goal.action === "repair" &&
@@ -630,7 +662,7 @@ export function createDirectPC({
             : [false, false];
         angle = 0;
       }
-      if (enabled && !supportsDirectFan(game.jobId)) {
+      if (enabled && ["memory", "cooling", "storage"].includes(game.jobId)) {
         panel.position.set(cover.x, cover.y, cover.z);
         panel.rotation.y = 0;
         panel.visible = true;
@@ -647,7 +679,7 @@ export function createDirectPC({
           l.rotation.z = latchOpen[i] ? (i === 0 ? -0.6 : 0.6) : 0;
         });
       }
-      if (enabled) {
+      if (enabled && game.jobId !== "keyboard-clean") {
         const deviceScrews = supportsDirectFan(game.jobId)
           ? fanRig.screws
           : screws;
@@ -685,6 +717,7 @@ export function createDirectPC({
       fanCleaning.update(game, enabled);
       bearing.update(game, enabled, time);
       wire.update(game, enabled, time);
+      keyboard.update(game, enabled, time);
       currentTargets = active ? targets(game, goal) : [];
       if (time - lastHud > 70) {
         lastHud = time;
@@ -779,6 +812,12 @@ export function createDirectPC({
                       ...(note ? { instruction: note } : {}),
                     }
                   : {}),
+                ...(game.jobId === "keyboard-clean"
+                  ? {
+                      ...keyboard.hud(game),
+                      ...(note ? { instruction: note } : {}),
+                    }
+                  : {}),
                 ...(game.jobId === "fan-cable" && goal.action === "repair"
                   ? {
                       ...wire.hud(game),
@@ -803,11 +842,13 @@ export function createDirectPC({
     nudge,
     setMeterMode: (value) => wire.setMode(value),
     selectProbe: (id) => wire.selectProbe(id),
+    setPullerEnd: (value) => keyboard.setEnd(value),
     toggleMeterSound: () => wire.toggleSound(),
     dispose: () => {
       cooling.dispose();
       fanCleaning.dispose();
       wire.dispose();
+      keyboard.dispose();
       canvas.removeEventListener("pointerdown", begin, true);
       canvas.removeEventListener("pointermove", move, true);
       canvas.removeEventListener("pointerup", finish, true);

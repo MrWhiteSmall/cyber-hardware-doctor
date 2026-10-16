@@ -2,6 +2,7 @@ import { chromium, expect } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { createGame, market } from "../src/game.js";
 import { mkdir } from "node:fs/promises";
+import { runKeyboardRepair } from "./keyboard-browser.mjs";
 
 await mkdir("artifacts", { recursive: true });
 const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -60,10 +61,11 @@ async function turn(clockwise, turns = 2.08) {
 }
 try {
   let p;
+  const keyboardOnly = process.argv.includes("--keyboard");
   const cableOnly = process.argv.includes("--cable");
   const bearingOnly = process.argv.includes("--bearing");
   const fanOnly = process.argv.includes("--fan");
-  if (!fanOnly && !bearingOnly && !cableOnly) {
+  if (!keyboardOnly && !fanOnly && !bearingOnly && !cableOnly) {
     const storageOnly = process.argv.includes("--storage");
     if (!storageOnly) {
       await page.goto("http://127.0.0.1:5188", {
@@ -542,6 +544,7 @@ try {
     );
     await page.reload();
   } else if (
+    !keyboardOnly &&
     !cableOnly &&
     !bearingOnly &&
     !process.argv.includes("--storage")
@@ -556,6 +559,7 @@ try {
     await closeLesson();
   }
   if (
+    !keyboardOnly &&
     !cableOnly &&
     !bearingOnly &&
     (fanOnly || !process.argv.includes("--storage"))
@@ -691,6 +695,7 @@ try {
     );
   }
   if (
+    !keyboardOnly &&
     !cableOnly &&
     (bearingOnly || (!fanOnly && !process.argv.includes("--storage")))
   ) {
@@ -906,8 +911,9 @@ try {
   }
 
   if (
-    cableOnly ||
-    (!fanOnly && !bearingOnly && !process.argv.includes("--storage"))
+    !keyboardOnly &&
+    (cableOnly ||
+      (!fanOnly && !bearingOnly && !process.argv.includes("--storage")))
   ) {
     if (cableOnly) {
       await page.goto("http://127.0.0.1:5188");
@@ -1187,6 +1193,24 @@ try {
       "PASS sixth job: manual guard, isolation, meter mode and tip-short self-test, actual probe contacts, reject cross-net/air readings, old open and good return, reload, mobile measurement, new-cable retest before connecting, no snap, two deliberate insertions, retention and delivery",
     );
   }
+  if (
+    keyboardOnly ||
+    !process.argv
+      .slice(2)
+      .some((flag) =>
+        ["--storage", "--fan", "--bearing", "--cable"].includes(flag),
+      )
+  )
+    await runKeyboardRepair({
+      page,
+      state,
+      marker,
+      drag,
+      tool,
+      closeLesson,
+      errors,
+      only: keyboardOnly,
+    });
 } catch (e) {
   await page.screenshot({
     path: "artifacts/direct-failure.png",

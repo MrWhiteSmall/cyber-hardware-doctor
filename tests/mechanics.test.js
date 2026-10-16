@@ -15,7 +15,7 @@ import {
 import { isDirectAction, supportsDirectJob } from "../src/DirectPC.js";
 import { createGame } from "../src/game.js";
 
-test("前六关的拆装必须在手动模式操作，其余工单仍标为辅助教学", () => {
+test("前七关的拆装必须在手动模式操作，其余工单仍标为辅助教学", () => {
   for (const id of [
     "memory",
     "cooling",
@@ -23,10 +23,15 @@ test("前六关的拆装必须在手动模式操作，其余工单仍标为辅�
     "fan-dust",
     "fan-bearing",
     "fan-cable",
+    "keyboard-clean",
   ]) {
     assert.equal(supportsDirectJob(id), true);
     const s = { ...createGame(id), unplugged: true, grounded: true };
-    assert.equal(isDirectAction(s), true, "螺丝步骤不能点按钮跳过");
+    assert.equal(
+      isDirectAction(s),
+      id !== "keyboard-clean",
+      "单键先观察，其余关卡的螺丝不能点按钮跳过",
+    );
     assert.equal(
       isDirectAction({
         ...s,
@@ -43,14 +48,16 @@ test("前六关的拆装必须在手动模式操作，其余工单仍标为辅�
                   ? "fanBlade"
                   : id === "fan-bearing"
                     ? "fanMotor"
-                    : "fanCable",
+                    : id === "fan-cable"
+                      ? "fanCable"
+                      : "keycap",
         ],
       }),
       true,
     );
     assert.equal(isDirectAction(createGame(id)), false, "安全准备保留界面操作");
   }
-  assert.equal(supportsDirectJob("keyboard-clean"), false);
+  assert.equal(supportsDirectJob("keyboard-switch"), false);
 });
 
 test("同样轻拨时润滑后的阻力更小，惯性计算不受帧率影响", () => {

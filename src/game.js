@@ -657,14 +657,15 @@ export function objective(s) {
       label: "戴好防静电腕带",
       tool: null,
     };
-  if (!s.fixed && s.screws > 0)
+  const keycapOnly = job.id === "keyboard-clean";
+  if (!keycapOnly && !s.fixed && s.screws > 0)
     return {
       text: `卸下${cover}的固定螺丝，还剩 ${s.screws} 颗`,
       action: "unscrew",
       label: "卸下一颗螺丝",
       tool: "driver",
     };
-  if (!s.fixed && !s.panelOpen)
+  if (!keycapOnly && !s.fixed && !s.panelOpen)
     return {
       text: `螺丝已取下，现在可以移开${cover}了`,
       action: "open",
@@ -687,14 +688,14 @@ export function objective(s) {
       tool: step.tool,
     };
   }
-  if (s.panelOpen)
+  if (!keycapOnly && s.panelOpen)
     return {
       text: `零件已修复，装回${cover}`,
       action: "close",
       label: `装回${cover}`,
       tool: "hand",
     };
-  if (s.screws < 4)
+  if (!keycapOnly && s.screws < 4)
     return {
       text: `装回固定螺丝，还剩 ${4 - s.screws} 颗`,
       action: "screw",
@@ -703,7 +704,9 @@ export function objective(s) {
     };
   if (s.unplugged)
     return {
-      text: "外壳装好了，接回电源线",
+      text: keycapOnly
+        ? "键帽已装回并检查回弹，接回 USB 线"
+        : "外壳装好了，接回电源线",
       action: "plug",
       label: "接回电源线",
       tool: null,
@@ -742,7 +745,14 @@ export function transition(state, action, value, inventory = starterTools) {
     return { state: s, ok: true };
   }
   if (action === "inspect") {
-    if (!s.panelOpen) return fail("先断电，再打开外壳，才能检查内部零件。");
+    if (
+      job.id === "keyboard-clean" ? !s.unplugged || !s.grounded : !s.panelOpen
+    )
+      return fail(
+        job.id === "keyboard-clean"
+          ? "先断开 USB 并完成防静电准备，再检查按键。"
+          : "先断电，再打开外壳，才能检查内部零件。",
+      );
     if (s.tool !== "inspect") return fail("选中「观察」工具，再检查零件。");
     if (!s.selected) return fail("点击设备里的零件，或者下方的零件名称。");
     if (!s.inspected.includes(s.selected)) s.inspected.push(s.selected);
@@ -786,9 +796,15 @@ export function transition(state, action, value, inventory = starterTools) {
         return fail(`先选中${parts[job.target].name}，再进行这一步操作。`);
       s.repairStep++;
       s.fixed = s.repairStep >= job.steps.length;
+      if (s.fixed && job.id === "keyboard-clean") {
+        s.panelOpen = false;
+        s.screws = 4;
+      }
       return add(
         s.fixed
-          ? `${parts[job.target].name}已处理完成。装回外壳后，再通电测试。`
+          ? job.id === "keyboard-clean"
+            ? "键帽已装回，连续按压回弹检查通过。接回 USB 后验证输入。"
+            : `${parts[job.target].name}已处理完成。装回外壳后，再通电测试。`
           : `${goal.text}，完成。`,
       );
     }
@@ -828,7 +844,7 @@ export function progress(s) {
   return [
     s.unplugged || s.fixed,
     s.grounded,
-    s.panelOpen || s.fixed,
+    s.panelOpen || s.fixed || (s.jobId === "keyboard-clean" && s.grounded),
     s.inspected.includes(jobs.find((j) => j.id === s.jobId).target),
     s.fixed,
     s.tested,

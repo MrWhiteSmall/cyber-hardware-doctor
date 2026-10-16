@@ -7,6 +7,7 @@ import { createDirectPC, supportsDirectFan } from "./DirectPC.js";
 import { createStorageRig } from "./StorageRepair.js";
 import { createBearingRig } from "./BearingRepair.js";
 import { createCableRig } from "./CableRepair.js";
+import { createKeyboardRig } from "./KeyboardRepair.js";
 
 const anchors = {
   cooler: [-0.35, 3.65, 0.8],
@@ -542,6 +543,14 @@ function makeScene(host, onSelect, latest, labels) {
     0.045,
   );
   text(keyboardDevice, "TYPE / AGAIN", [0, 1, 0.4], 0.21, "#80917b");
+  const keyboardRig = createKeyboardRig({
+    body: keyboardBody,
+    stockCap: capGroup,
+    box,
+    line,
+    text,
+    materials: m,
+  });
   // A screwdriver, spare screws and a parts tray make the bench feel lived in.
   const driver = new THREE.Group();
   driver.position.set(2.8, 0.12, 1.7);
@@ -575,6 +584,7 @@ function makeScene(host, onSelect, latest, labels) {
     latches: ramLatches,
     dustPatches,
     storageRig,
+    keyboardRig,
     fanRig: {
       cover: fanCover,
       screws: fanScrews,
@@ -631,11 +641,13 @@ function makeScene(host, onSelect, latest, labels) {
   renderer.domElement.addEventListener("pointerup", pointerUp);
   let fanView = false,
     bearingView = false,
-    cableView = false;
+    cableView = false,
+    keyboardView = false;
   const focusFan = () => {
     fanView = true;
     bearingView = false;
     cableView = false;
+    keyboardView = false;
     controls.minDistance = 7;
     controls.maxDistance = 32;
     controls.target.set(-1.45, 2.9, 0.8);
@@ -653,6 +665,7 @@ function makeScene(host, onSelect, latest, labels) {
   };
   const focusBearing = () => {
     cableView = false;
+    keyboardView = false;
     bearingView = true;
     fanView = false;
     controls.minDistance = 3;
@@ -675,6 +688,7 @@ function makeScene(host, onSelect, latest, labels) {
     controls.update();
   };
   const focusCable = () => {
+    keyboardView = false;
     cableView = true;
     fanView = false;
     bearingView = false;
@@ -697,6 +711,32 @@ function makeScene(host, onSelect, latest, labels) {
       );
     controls.update();
   };
+  const focusKeyboard = () => {
+    keyboardView = true;
+    fanView = false;
+    bearingView = false;
+    cableView = false;
+    controls.minDistance = 1.6;
+    controls.maxDistance = 18;
+    controls.target.copy(
+      keyboardBody.localToWorld(new THREE.Vector3(-1.65, 0.07, 0.45)),
+    );
+    camera.position
+      .copy(controls.target)
+      .add(
+        new THREE.Vector3(0.8, 2.8, 3.2)
+          .normalize()
+          .multiplyScalar(
+            Math.max(
+              3.5,
+              0.85 /
+                (camera.aspect *
+                  Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))),
+            ),
+          ),
+      );
+    controls.update();
+  };
   const resize = () => {
     const { width, height } = host.getBoundingClientRect();
     renderer.setSize(width, height);
@@ -705,6 +745,7 @@ function makeScene(host, onSelect, latest, labels) {
     if (fanView) focusFan();
     if (bearingView) focusBearing();
     if (cableView) focusCable();
+    if (keyboardView) focusKeyboard();
   };
   const observer = new ResizeObserver(resize);
   observer.observe(host);
@@ -738,7 +779,7 @@ function makeScene(host, onSelect, latest, labels) {
       fanCover.position.z = 0;
     keyCover.position.y = THREE.MathUtils.lerp(
       keyCover.position.y,
-      open ? 3.5 : 0,
+      open && game.jobId !== "keyboard-clean" ? 3.5 : 0,
       0.09,
     );
     keyCover.visible = keyCover.position.y < 3.4;
@@ -756,7 +797,12 @@ function makeScene(host, onSelect, latest, labels) {
     }
     capGroup.position.y = THREE.MathUtils.lerp(
       capGroup.position.y,
-      device === "keyboard" && game.repairStep > 0 && !game.fixed ? 1 : 0,
+      device === "keyboard" &&
+        game.jobId !== "keyboard-clean" &&
+        game.repairStep > 0 &&
+        !game.fixed
+        ? 1
+        : 0,
       0.08,
     );
     screws.forEach((s, i) => {
@@ -798,7 +844,8 @@ function makeScene(host, onSelect, latest, labels) {
     if (game.selected && open) {
       selection.box.setFromObject(groups[game.selected]);
       selection.visible = !(
-        latest.current.direct && supportsDirectFan(game.jobId)
+        latest.current.direct &&
+        (supportsDirectFan(game.jobId) || game.jobId === "keyboard-clean")
       );
     } else selection.visible = false;
     controls.update();
@@ -826,6 +873,7 @@ function makeScene(host, onSelect, latest, labels) {
       fanView = false;
       bearingView = false;
       cableView = false;
+      keyboardView = false;
       controls.minDistance = 7;
       controls.target.set(0.67, 3.65, 0.8);
       camera.position.copy(controls.target).add(new THREE.Vector3(3.2, 1.2, 7));
@@ -835,6 +883,7 @@ function makeScene(host, onSelect, latest, labels) {
       fanView = false;
       bearingView = false;
       cableView = false;
+      keyboardView = false;
       controls.minDistance = 7;
       controls.target.set(-0.35, 3.65, 0.5);
       camera.position.copy(controls.target).add(new THREE.Vector3(2.5, 0.8, 7));
@@ -844,6 +893,7 @@ function makeScene(host, onSelect, latest, labels) {
       fanView = false;
       bearingView = false;
       cableView = false;
+      keyboardView = false;
       controls.minDistance = 3;
       controls.target.set(-0.05, 1.35, 0.1);
       camera.position
@@ -854,10 +904,16 @@ function makeScene(host, onSelect, latest, labels) {
     focusFan,
     focusBearing,
     focusCable,
+    focusKeyboard,
+    setPullerEnd: (value) => direct.setPullerEnd(value),
     setMeterMode: (value) => direct.setMeterMode(value),
     selectProbe: (id) => direct.selectProbe(id),
     toggleMeterSound: () => direct.toggleMeterSound(),
     reset: () => {
+      if (latest.current.game.jobId === "keyboard-clean") {
+        focusKeyboard();
+        return;
+      }
       if (supportsDirectFan(latest.current.game.jobId)) {
         focusFan();
         return;
@@ -865,6 +921,7 @@ function makeScene(host, onSelect, latest, labels) {
       fanView = false;
       bearingView = false;
       cableView = false;
+      keyboardView = false;
       controls.maxDistance = 18;
       controls.minDistance = 7;
       camera.position.copy(home);
@@ -982,7 +1039,9 @@ export default function Workbench({
         latest,
         labels,
       );
-      if (supportsDirectFan(latest.current.game.jobId)) {
+      if (latest.current.game.jobId === "keyboard-clean")
+        api.current.focusKeyboard();
+      else if (supportsDirectFan(latest.current.game.jobId)) {
         if (
           latest.current.game.jobId === "fan-cable" &&
           latest.current.game.panelOpen &&
@@ -1028,7 +1087,10 @@ export default function Workbench({
                   {!hud.storage &&
                     !hud.fanGuard &&
                     !hud.bearing &&
-                    !hud.cableRepair && <polygon points={hud.alignmentZone} />}
+                    !hud.cableRepair &&
+                    !hud.keyboardRepair && (
+                      <polygon points={hud.alignmentZone} />
+                    )}
                 </svg>
               )}
               {hud.targets.map((target) => (
@@ -1056,6 +1118,11 @@ export default function Workbench({
                   {hud.bearing && hud.canPush && (
                     <small className="connector-marker-label">
                       {target.guide ? "注油孔 · 固定" : "胶塞 · 握住移动"}
+                    </small>
+                  )}
+                  {hud.keyboardRepair && hud.canPush && (
+                    <small className="connector-marker-label">
+                      {target.guide ? "十字轴 · 固定" : "键帽 · 握住移动"}
                     </small>
                   )}
                   {hud.cableRepair && hud.canPush && (
@@ -1126,50 +1193,88 @@ export default function Workbench({
             手动实操 /{" "}
             {hud.action === "screw" || hud.action === "unscrew"
               ? `${Math.round(hud.progress * 720)}° / 720°`
-              : hud.cableRepair
+              : hud.keyboardRepair
                 ? {
-                    disconnect: "分离线材两端",
-                    diagnose: "旧线测量 · 查找断路",
-                    "clear-old": "旧线测量完成 · 收回表笔",
-                    "clear-new": "新线复测通过 · 收回表笔",
-                    remove: "分开放置旧线",
-                    prepare: "准备新线 · 两端保持分离",
-                    retest: "新线复测 · 逐根检查",
-                    insert: "接回风扇端 · 主动推入",
-                    source: "接回 USB 端 · 输出关闭",
-                    retain: "轻拉检查固定",
-                  }[hud.cablePhase]
-                : hud.cleaning
-                  ? hud.step === 0
-                    ? "固定风扇叶片"
-                    : `积灰清理 ${hud.cleaned} / ${hud.total}`
-                  : hud.bearing
-                    ? {
-                        before: "润滑前 · 轻拨检查阻力",
-                        open: "背面检修窗口 · 拔出胶塞",
-                        oil: "注油孔 · 少量点涂",
-                        seal: "胶塞对孔 · 手动压回",
-                        after: "润滑后 · 再次轻拨复查",
-                      }[hud.bearingPhase]
-                    : hud.fanGuard
-                      ? hud.canPush
-                        ? `护网复装 · ${hud.aligned ? "螺孔已对齐" : "先平移对孔"}`
-                        : "拉出并移开前护网"
-                      : hud.storage
-                        ? {
-                            power: "检查供电接头",
-                            release: "按锁扣并拔出数据接头",
-                            insert: "对位并手动推入",
-                            verify: "轻拉确认锁扣固定",
-                          }[hud.storagePhase]
-                        : hud.canPush
-                          ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
-                          : "沿结构操作"}
+                    engage: "拔键器 · 扣住两侧下沿",
+                    lift: "沿键盘法线提起键帽",
+                    park: "键帽移到零件盘",
+                    clean: `键下碎屑 ${hud.cleaned} / ${hud.total}`,
+                    seat: "对准十字轴 · 主动压回",
+                    press: `按压与松手 · 回弹 ${hud.keyReturns} / 3`,
+                  }[hud.keyPhase]
+                : hud.cableRepair
+                  ? {
+                      disconnect: "分离线材两端",
+                      diagnose: "旧线测量 · 查找断路",
+                      "clear-old": "旧线测量完成 · 收回表笔",
+                      "clear-new": "新线复测通过 · 收回表笔",
+                      remove: "分开放置旧线",
+                      prepare: "准备新线 · 两端保持分离",
+                      retest: "新线复测 · 逐根检查",
+                      insert: "接回风扇端 · 主动推入",
+                      source: "接回 USB 端 · 输出关闭",
+                      retain: "轻拉检查固定",
+                    }[hud.cablePhase]
+                  : hud.cleaning
+                    ? hud.step === 0
+                      ? "固定风扇叶片"
+                      : `积灰清理 ${hud.cleaned} / ${hud.total}`
+                    : hud.bearing
+                      ? {
+                          before: "润滑前 · 轻拨检查阻力",
+                          open: "背面检修窗口 · 拔出胶塞",
+                          oil: "注油孔 · 少量点涂",
+                          seal: "胶塞对孔 · 手动压回",
+                          after: "润滑后 · 再次轻拨复查",
+                        }[hud.bearingPhase]
+                      : hud.fanGuard
+                        ? hud.canPush
+                          ? `护网复装 · ${hud.aligned ? "螺孔已对齐" : "先平移对孔"}`
+                          : "拉出并移开前护网"
+                        : hud.storage
+                          ? {
+                              power: "检查供电接头",
+                              release: "按锁扣并拔出数据接头",
+                              insert: "对位并手动推入",
+                              verify: "轻拉确认锁扣固定",
+                            }[hud.storagePhase]
+                          : hud.canPush
+                            ? `${hud.aligned ? "位置与方向吻合" : "未对齐"} · ${hud.angle}°`
+                            : "沿结构操作"}
           </span>
           <p>{hud.instruction}</p>
           <div className="mechanic-progress">
             <i style={{ width: `${Math.min(100, hud.progress * 100)}%` }} />
           </div>
+          {hud.keyboardRepair && (
+            <div className="keyboard-lesson" data-phase={hud.keyPhase}>
+              <div className="mechanic-buttons">
+                <button onClick={() => api.current?.focusKeyboard()}>
+                  按键近景
+                </button>
+                {hud.keyPhase === "engage" &&
+                  [
+                    ["keycap", "钢丝拔键端"],
+                    ["switch", "拔轴端"],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      aria-pressed={hud.toolEnd === value}
+                      className={hud.toolEnd === value ? "active" : ""}
+                      onClick={() => api.current?.setPullerEnd(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                <small>普通单键 · 轴体留在定位板上 · 无需拆外壳</small>
+              </div>
+              <p>
+                {hud.keyPhase === "press"
+                  ? "按下时键帽和轴心一起下移；松手后弹簧带它们回到原高度。这里只检查机械回弹，USB 输入在最后验证。"
+                  : "键帽下的十字孔套在轴心上，靠配合固定。拔键端托住键帽下沿；拔轴端用于轴体卡扣，作用位置不同。"}
+              </p>
+            </div>
+          )}
           {hud.cableRepair && (
             <div className="cable-lesson" data-phase={hud.cablePhase}>
               {hud.meter && (
@@ -1324,7 +1429,7 @@ export default function Workbench({
               </p>
             </div>
           )}
-          {hud.cleaning && (
+          {hud.cleaning && !hud.keyboardRepair && (
             <div className="mechanic-buttons">
               <button
                 onClick={() =>
@@ -1349,28 +1454,34 @@ export default function Workbench({
                     ? hud.positionAligned
                       ? "✓ 螺孔对准"
                       : "○ 螺孔需微调"
-                    : hud.cableRepair
+                    : hud.keyboardRepair
                       ? hud.positionAligned
-                        ? "✓ 接头对准"
-                        : "○ 接头需微调"
-                      : hud.bearing
+                        ? "✓ 十字轴对准"
+                        : "○ 键帽需微调"
+                      : hud.cableRepair
                         ? hud.positionAligned
-                          ? "✓ 胶塞对孔"
-                          : "○ 胶塞需微调"
-                        : hud.positionAligned
-                          ? "✓ 位置对准"
-                          : "○ 位置需微调"}
+                          ? "✓ 接头对准"
+                          : "○ 接头需微调"
+                        : hud.bearing
+                          ? hud.positionAligned
+                            ? "✓ 胶塞对孔"
+                            : "○ 胶塞需微调"
+                          : hud.positionAligned
+                            ? "✓ 位置对准"
+                            : "○ 位置需微调"}
                 </span>
                 <span>
                   {hud.fanGuard
                     ? "✓ 保持护网朝向"
-                    : hud.cableRepair
-                      ? "✓ 保持凸键朝向"
-                      : hud.bearing
-                        ? "✓ 保持胶塞朝向"
-                        : hud.directionAligned
-                          ? "✓ 缺口方向正确"
-                          : "○ 按 R 检查方向"}
+                    : hud.keyboardRepair
+                      ? "✓ 保持键帽朝向"
+                      : hud.cableRepair
+                        ? "✓ 保持凸键朝向"
+                        : hud.bearing
+                          ? "✓ 保持胶塞朝向"
+                          : hud.directionAligned
+                            ? "✓ 缺口方向正确"
+                            : "○ 按 R 检查方向"}
                 </span>
                 <span>仍需手动推到底</span>
               </div>
@@ -1380,7 +1491,7 @@ export default function Workbench({
                   aria-pressed={pushMode}
                   onClick={() => setPushMode(true)}
                 >
-                  沿槽推入
+                  {hud.keyboardRepair ? "沿轴压入" : "沿槽推入"}
                   <small>沿箭头拖动</small>
                 </button>
                 <button
@@ -1392,7 +1503,8 @@ export default function Workbench({
                 </button>
                 {hud.action === "repair" &&
                   !hud.bearing &&
-                  !hud.cableRepair && (
+                  !hud.cableRepair &&
+                  !hud.keyboardRepair && (
                     <button onClick={() => api.current?.rotatePart()}>
                       旋转 90° <small>R</small>
                     </button>
@@ -1421,7 +1533,8 @@ export default function Workbench({
                 <small>也可用键盘方向键</small>
                 {hud.action === "repair" &&
                   !hud.bearing &&
-                  !hud.cableRepair && (
+                  !hud.cableRepair &&
+                  !hud.keyboardRepair && (
                     <button
                       className="memory-focus"
                       onClick={() =>

@@ -394,6 +394,9 @@ function App() {
       setModal("tutorial");
     }
   }
+  const keycapOnly = game.jobId === "keyboard-clean";
+  const accessible =
+    game.panelOpen || (keycapOnly && game.unplugged && game.grounded);
   const steps = [
     {
       title: "安全准备",
@@ -402,20 +405,27 @@ function App() {
       active: !game.grounded,
     },
     {
-      title: "打开外壳",
-      sub: "取下螺丝，移开外壳",
-      done: game.panelOpen || game.fixed,
-      active: game.grounded && !game.panelOpen && !game.fixed,
+      title: keycapOnly ? "观察按键" : "打开外壳",
+      sub: keycapOnly ? "检查卡顿位置，无需拆外壳" : "取下螺丝，移开外壳",
+      done: keycapOnly
+        ? game.inspected.includes("keycap")
+        : game.panelOpen || game.fixed,
+      active: keycapOnly
+        ? game.grounded && !game.inspected.includes("keycap")
+        : game.grounded && !game.panelOpen && !game.fixed,
     },
     {
       title: "检查与维修",
       sub: "寻找线索，处理故障",
       done: game.fixed,
-      active: game.panelOpen && !game.fixed,
+      active:
+        accessible &&
+        !game.fixed &&
+        (!keycapOnly || game.inspected.includes("keycap")),
     },
     {
       title: "开机验证",
-      sub: "装回外壳，验证维修结果",
+      sub: keycapOnly ? "接回 USB，验证按键输入" : "装回外壳，验证维修结果",
       done: game.tested,
       active: game.fixed && !game.tested,
     },
@@ -554,7 +564,9 @@ function App() {
                       ? "轻拨比较轴承阻力，拔出背面胶塞、少量点油，密封后复查转动。"
                       : game.jobId === "fan-cable"
                         ? "先分离两端，短接表笔自检、逐根测通断；新线复测后再手动对位接回。"
-                        : "本关目前为辅助教学；前六关已开放手动实操。"}
+                        : game.jobId === "keyboard-clean"
+                          ? "拔键端扣住下沿，垂直提起；逐处清屑，对轴压回后按压检查回弹。"
+                          : "本关目前为辅助教学；前七关已开放手动实操。"}
           </small>
         </div>
         <div className="workspace">
@@ -658,9 +670,11 @@ function App() {
               <div className="scene-top-note">
                 <span className="mono">LRS — {job.number}</span>
                 <small>
-                  {game.panelOpen
-                    ? "外壳已打开 · 可检查内部零件"
-                    : "选择工具，开始你的维修"}
+                  {keycapOnly
+                    ? "普通单键维护 · 无需拆外壳"
+                    : game.panelOpen
+                      ? "外壳已打开 · 可检查内部零件"
+                      : "选择工具，开始你的维修"}
                 </small>
               </div>
               <Workbench
@@ -771,13 +785,15 @@ function App() {
                       ? direct
                         ? ["cooling", "fan-dust"].includes(game.jobId)
                           ? "在叶片标记上长按固定，再换气吹，对准每处积灰短按约半秒并松开。"
-                          : game.jobId === "fan-cable"
-                            ? "表笔要碰到实际金属触点。先用通断档自检并逐根测线，再换接线工具，手动对位和推入两端。"
-                            : game.jobId === "fan-bearing"
-                              ? "先轻拨叶片判断阻力，再在轴承背面拔出胶塞。润滑工具对准注油孔短按约四分之一秒；压回胶塞后还要轻拨复查。"
-                              : game.jobId === "storage"
-                                ? "先用拆装工具轻推供电接头；再用接线工具按住数据接头的金属锁扣约半秒，保持按住沿箭头拔出，重新对位推入并轻拉检查。"
-                                : "选择拆装工具，在 3D 视图中沿结构操作；对齐后要主动推入。"
+                          : game.jobId === "keyboard-clean"
+                            ? "选拔键器钢丝端，扣住键帽下沿再垂直提起；短促清屑后对轴压回，按下并松手三次检查回弹。"
+                            : game.jobId === "fan-cable"
+                              ? "表笔要碰到实际金属触点。先用通断档自检并逐根测线，再换接线工具，手动对位和推入两端。"
+                              : game.jobId === "fan-bearing"
+                                ? "先轻拨叶片判断阻力，再在轴承背面拔出胶塞。润滑工具对准注油孔短按约四分之一秒；压回胶塞后还要轻拨复查。"
+                                : game.jobId === "storage"
+                                  ? "先用拆装工具轻推供电接头；再用接线工具按住数据接头的金属锁扣约半秒，保持按住沿箭头拔出，重新对位推入并轻拉检查。"
+                                  : "选择拆装工具，在 3D 视图中沿结构操作；对齐后要主动推入。"
                         : `选中${parts[job.target].name}，点击下方按钮完成操作。`
                       : direct && isDirectAction(game)
                         ? "按 3D 视图中的旋转或平移提示，实际操作零件。"
@@ -864,11 +880,13 @@ function App() {
                       ? game.selected === job.target
                         ? selected.fault
                         : "外观及连接未发现与本次故障有关的异常。"
-                      : game.panelOpen
+                      : accessible
                         ? "选中「观察」工具，检查这个零件。"
-                        : "先断电并打开外壳，看看它的实际情况。"}
+                        : keycapOnly
+                          ? "先断开 USB 并完成防静电准备，再检查按键。"
+                          : "先断电并打开外壳，看看它的实际情况。"}
                   </p>
-                  {game.panelOpen && (
+                  {accessible && (
                     <button onClick={() => act("inspect")}>
                       检查{selected.name}
                       <ArrowRight size={13} />
@@ -1370,9 +1388,9 @@ function App() {
                   <b>选工具，再动手</b>
                   <p>
                     使用工具台或数字键 1–8
-                    切换工具。前六关默认手动实操：电脑章练习内存、散热清灰和
+                    切换工具。前七关默认手动实操：电脑章练习内存、散热清灰和
                     SATA
-                    接线；风扇章练习护网拆装、分区清灰、可维护轴承润滑和表笔测线。辅助教学可用步骤按钮。
+                    接线；风扇章练习护网拆装、分区清灰、可维护轴承润滑和表笔测线；键盘章首关练习拔键清屑与回弹检查。辅助教学可用步骤按钮。
                   </p>
                 </li>
                 <li>

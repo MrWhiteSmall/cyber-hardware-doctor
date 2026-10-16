@@ -11,6 +11,7 @@ export function createCoolingRepair({
   jobId = "cooling",
   partId = "cooler",
   holdPoint = new THREE.Vector3(-0.35, 3.97, 0.74),
+  holdRequired = true,
 }) {
   let gesture = null,
     note = "",
@@ -67,12 +68,12 @@ export function createCoolingRepair({
       enabled &&
       !game.fixed &&
       game.inspected.includes(partId) &&
-      game.panelOpen
+      (holdRequired ? game.panelOpen : game.unplugged && game.grounded)
     );
   }
   return {
     targets(game) {
-      if (game.repairStep === 0)
+      if (holdRequired && game.repairStep === 0)
         return [target("fan-hold", holdPoint, "长按固定叶片")];
       return patches.map((patch, i) => ({
         ...target(
@@ -148,7 +149,9 @@ export function createCoolingRepair({
       enabled = nextEnabled;
       const repairing = ready();
       hand.visible =
-        repairing && (game.repairStep === 1 || gesture?.id === "fan-hold");
+        holdRequired &&
+        repairing &&
+        (game.repairStep === 1 || gesture?.id === "fan-hold");
       blower.visible =
         repairing && game.repairStep === 1 && game.tool === "air";
       if (enabled)
@@ -183,7 +186,11 @@ export function createCoolingRepair({
       const holding = game.repairStep === 0;
       return {
         cleaning: true,
-        cleaningKind: jobId === "fan-dust" ? "fan" : "pc",
+        cleaningKind: !holdRequired
+          ? "keyboard"
+          : jobId === "fan-dust"
+            ? "fan"
+            : "pc",
         zones:
           jobId === "fan-dust"
             ? ["护网", "叶片"]
@@ -204,7 +211,9 @@ export function createCoolingRepair({
           note ||
           (holding
             ? "选择拆装工具，在叶片标记上按住约一秒再松开。固定后，左手会继续稳住风扇。"
-            : "左手保持叶片固定。选择气吹，对准橙色积灰点，短按约半秒再松开；每处单独吹一次。"),
+            : holdRequired
+              ? "左手保持叶片固定。选择气吹，对准橙色积灰点，短按约半秒再松开；每处单独吹一次。"
+              : "键帽已移开，轴体保持安装。选择气吹，逐处对准碎屑短按约半秒后松开；不要持续吹或带着按压滑走。"),
       };
     },
     dispose() {

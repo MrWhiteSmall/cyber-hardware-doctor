@@ -97,3 +97,36 @@ test("章节顺序与采购预算能够完整推进，不会因强制采购卡�
   assert.equal(completed.length, 9);
   assert.equal(coins, 1190);
 });
+
+test("单键清洁只拆键帽，保持外壳和螺丝完整；旧外壳存档也能继续", () => {
+  let s = createGame("keyboard-clean");
+  assert.equal(transition(s, "inspect", undefined, inventory).ok, false);
+  s = run(s, "unplug");
+  s = run(s, "ground");
+  assert.equal(objective(s).action, "inspect");
+  assert.equal(transition(s, "unscrew", undefined, inventory).ok, false);
+  s = run(s, "select", "keycap");
+  s = run(s, "inspect");
+  for (let i = 0; i < 3; i++) {
+    s = run(s, "tool", objective(s).tool);
+    s = run(s, "repair");
+  }
+  assert.equal(s.panelOpen, false);
+  assert.equal(s.screws, 4);
+  assert.equal(objective(s).action, "plug");
+  let old = {
+    ...createGame("keyboard-clean"),
+    unplugged: true,
+    grounded: true,
+    panelOpen: true,
+    screws: 0,
+    repairStep: 2,
+    inspected: ["keycap"],
+    selected: "keycap",
+    tool: "hand",
+  };
+  old = run(old, "repair");
+  assert.equal(old.panelOpen, false);
+  assert.equal(old.screws, 4);
+  assert.equal(objective(old).action, "plug");
+});
