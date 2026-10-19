@@ -81,7 +81,8 @@ test("章节顺序与采购预算能够完整推进，不会因强制采购卡�
   for (const [i, job] of jobs.entries()) {
     assert.equal(unlocked(job.id, completed), true);
     assert.equal(chapterUnlocked(job.chapter, completed), true);
-    if (jobs[i + 1]) assert.equal(unlocked(jobs[i + 1].id, completed), false);
+    if (jobs[i + 1] && !jobs[i + 1].unlockAfter)
+      assert.equal(unlocked(jobs[i + 1].id, completed), false);
     for (const id of job.needs)
       if (!purchased.includes(id)) {
         const item = market.find((m) => m.id === id);
@@ -94,8 +95,29 @@ test("章节顺序与采购预算能够完整推进，不会因强制采购卡�
     coins += job.reward;
     assert.ok(chapterOf(job).parts.includes(job.target));
   }
-  assert.equal(completed.length, 9);
-  assert.equal(coins, 1190);
+  assert.equal(completed.length, 10);
+  assert.equal(coins, 1370);
+});
+
+test("手机入门在键盘清洁后开放，不拆屏或外壳，完成前不能接电", () => {
+  assert.equal(unlocked("phone-charge", []), false);
+  assert.equal(unlocked("phone-charge", ["keyboard-clean"]), true);
+  assert.equal(chapterUnlocked("phone", ["keyboard-clean"]), true);
+  let s = createGame("phone-charge");
+  assert.equal(transition(s, "inspect", undefined, inventory).ok, false);
+  s = run(run(s, "unplug"), "ground");
+  assert.equal(objective(s).action, "inspect");
+  for (const a of ["unscrew", "open", "plug", "test"])
+    assert.equal(transition(s, a, undefined, inventory).ok, false);
+  s = run(run(s, "select", "phonePort"), "inspect");
+  for (let i = 0; i < 4; i++) {
+    s = run(s, "tool", objective(s).tool);
+    s = run(s, "repair");
+    assert.equal(s.fixed, i === 3);
+    assert.equal(s.screws, 4);
+    assert.equal(s.panelOpen, false);
+  }
+  assert.equal(objective(s).action, "plug");
 });
 
 test("单键清洁只拆键帽，保持外壳和螺丝完整；旧外壳存档也能继续", () => {

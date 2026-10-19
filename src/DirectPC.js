@@ -6,6 +6,7 @@ import { createFanRepair } from "./FanRepair.js";
 import { createBearingRepair } from "./BearingRepair.js";
 import { createCableRepair } from "./CableRepair.js";
 import { createKeyboardRepair } from "./KeyboardRepair.js";
+import { createPhoneRepair } from "./PhoneRepair.js";
 import {
   TAU,
   ALIGNMENT_TOLERANCE,
@@ -18,8 +19,9 @@ import {
 export const supportsDirectFan = (id) =>
   ["fan-dust", "fan-bearing", "fan-cable"].includes(id);
 export const supportsDirectJob = (id) =>
-  ["memory", "cooling", "storage", "keyboard-clean"].includes(id) ||
-  supportsDirectFan(id);
+  ["memory", "cooling", "storage", "keyboard-clean", "phone-charge"].includes(
+    id,
+  ) || supportsDirectFan(id);
 export const isDirectAction = (game) =>
   supportsDirectJob(game.jobId) &&
   ["unscrew", "screw", "open", "close", "repair"].includes(
@@ -40,6 +42,7 @@ export function createDirectPC({
   storageRig,
   fanRig,
   keyboardRig,
+  phoneRig,
   latest,
 }) {
   let key = "",
@@ -154,6 +157,12 @@ export function createDirectPC({
     planePoint,
     latest,
   });
+  const phone = createPhoneRepair({
+    rig: phoneRig,
+    target,
+    planePoint,
+    latest,
+  });
   const fanHelper = (id) =>
     id === "fan-cable" ? wire : id === "fan-bearing" ? bearing : fanCleaning;
   const fanCleaning = createCoolingRepair({
@@ -167,6 +176,7 @@ export function createDirectPC({
     holdPoint: new THREE.Vector3(0.3, 3.97, 0.76),
   });
   function targets(game, goal) {
+    if (game.jobId === "phone-charge") return phone.targets(game);
     if (game.jobId === "keyboard-clean") return keyboard.targets(game);
     if (goal.action === "unscrew" || goal.action === "screw") {
       const deviceScrews = supportsDirectFan(game.jobId)
@@ -294,20 +304,23 @@ export function createDirectPC({
     if (goal.action === "repair")
       latest.current.act(
         "select",
-        game.jobId === "keyboard-clean"
-          ? "keycap"
-          : game.jobId === "fan-cable"
-            ? "fanCable"
-            : game.jobId === "fan-bearing"
-              ? "fanMotor"
-              : game.jobId === "fan-dust"
-                ? "fanBlade"
-                : game.jobId === "cooling"
-                  ? "cooler"
-                  : game.jobId === "storage"
-                    ? "storage"
-                    : "ram",
+        game.jobId === "phone-charge"
+          ? "phonePort"
+          : game.jobId === "keyboard-clean"
+            ? "keycap"
+            : game.jobId === "fan-cable"
+              ? "fanCable"
+              : game.jobId === "fan-bearing"
+                ? "fanMotor"
+                : game.jobId === "fan-dust"
+                  ? "fanBlade"
+                  : game.jobId === "cooling"
+                    ? "cooler"
+                    : game.jobId === "storage"
+                      ? "storage"
+                      : "ram",
       );
+    if (game.jobId === "phone-charge") phone.begin(hit, point);
     if (game.jobId === "keyboard-clean") keyboard.begin(hit, point);
     if (game.jobId === "cooling" && goal.action === "repair")
       cooling.begin(hit, point);
@@ -349,7 +362,9 @@ export function createDirectPC({
       goal = objective(game),
       point = local(e),
       g = gesture;
-    if (game.jobId === "keyboard-clean") {
+    if (game.jobId === "phone-charge") {
+      phone.move(point, e.shiftKey);
+    } else if (game.jobId === "keyboard-clean") {
       keyboard.move(point, e.shiftKey);
     } else if (game.jobId === "fan-cable" && goal.action === "repair") {
       wire.move(point, e.shiftKey);
@@ -456,6 +471,11 @@ export function createDirectPC({
     controls.enabled = true;
     if (canvas.hasPointerCapture(e.pointerId))
       canvas.releasePointerCapture(e.pointerId);
+    if (game.jobId === "phone-charge") {
+      if (phone.finish(e.type === "pointercancel"))
+        latest.current.act("repair");
+      return;
+    }
     if (game.jobId === "keyboard-clean") {
       if (keyboard.finish(e.type === "pointercancel"))
         latest.current.act("repair");
@@ -519,6 +539,10 @@ export function createDirectPC({
     if (!active || gesture) return;
     const game = latest.current.game,
       goal = objective(game);
+    if (game.jobId === "phone-charge") {
+      phone.nudge(dx, dy);
+      return;
+    }
     if (game.jobId === "keyboard-clean") {
       keyboard.nudge(dx, dy);
       return;
@@ -579,7 +603,9 @@ export function createDirectPC({
     }[e.key];
     if (!direction) return;
     const goal = objective(latest.current.game);
-    if (latest.current.game.jobId === "keyboard-clean") {
+    if (
+      ["keyboard-clean", "phone-charge"].includes(latest.current.game.jobId)
+    ) {
       e.preventDefault();
       nudge(...direction);
       return;
@@ -679,7 +705,7 @@ export function createDirectPC({
           l.rotation.z = latchOpen[i] ? (i === 0 ? -0.6 : 0.6) : 0;
         });
       }
-      if (enabled && game.jobId !== "keyboard-clean") {
+      if (enabled && !["keyboard-clean", "phone-charge"].includes(game.jobId)) {
         const deviceScrews = supportsDirectFan(game.jobId)
           ? fanRig.screws
           : screws;
@@ -718,6 +744,7 @@ export function createDirectPC({
       bearing.update(game, enabled, time);
       wire.update(game, enabled, time);
       keyboard.update(game, enabled, time);
+      phone.update(game, enabled);
       currentTargets = active ? targets(game, goal) : [];
       if (time - lastHud > 70) {
         lastHud = time;
@@ -809,6 +836,12 @@ export function createDirectPC({
                 ["open", "close"].includes(goal.action)
                   ? {
                       ...fanGuard.hud(game, goal),
+                      ...(note ? { instruction: note } : {}),
+                    }
+                  : {}),
+                ...(game.jobId === "phone-charge"
+                  ? {
+                      ...phone.hud(game),
                       ...(note ? { instruction: note } : {}),
                     }
                   : {}),

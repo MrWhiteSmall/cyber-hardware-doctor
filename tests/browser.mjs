@@ -145,7 +145,7 @@ await page.locator(".chapter-tabs button").first().click();
 await page.locator(".job-card").first().click();
 await closeTutorial();
 const completedBefore = (await state()).completed;
-expect(completedBefore).toHaveLength(9);
+expect(completedBefore).toHaveLength(10);
 await page.setViewportSize({ width: 390, height: 844 });
 await page.screenshot({
   path: "artifacts/workbench-mobile.png",
@@ -181,7 +181,7 @@ await page.setViewportSize({ width: 1440, height: 1120 });
 await page.getByRole("button", { name: /维修工单/ }).click();
 await page.locator(".roadmap-entry").click();
 await expect(page.locator(".roadmap-grid>button")).toHaveCount(12);
-await expect(page.locator(".roadmap-grid>button.available")).toHaveCount(3);
+await expect(page.locator(".roadmap-grid>button.available")).toHaveCount(4);
 await page.screenshot({ path: "artifacts/chapter-map.png", fullPage: true });
 await page
   .locator(".roadmap-grid>button")

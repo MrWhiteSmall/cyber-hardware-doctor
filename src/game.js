@@ -262,6 +262,31 @@ Object.assign(parts, {
   },
 });
 
+Object.assign(parts, {
+  phonePort: {
+    name: "USB-C 充电接口",
+    en: "PHONE / USB-C",
+    spec: "教学手机 · USB-C · 5 V 充电",
+    analogy: "电力和数据进出手机的小门",
+    description:
+      "USB-C 的中央舌片承载触点，连接线需要平直插入。充不进电可能来自线材、接口、适配器或手机内部，不能只凭症状更换电池。",
+    tip: "本关只做外部检查，不拆机。USB-C 可以正反插，但歪斜不能硬压；不用金属物刮接口。",
+    fault: "接口未见堵塞或舌片变形；旧线接头护套有裂口，需要分离后仔细观察。",
+    color: "#779b88",
+  },
+  phoneCable: {
+    name: "手机充电线",
+    en: "USB-C / CHARGING CABLE",
+    spec: "已知良好替换线 · 5 V 教学电源",
+    analogy: "把电源送到手机的外部桥梁",
+    description:
+      "接头附近反复弯折会使护套开裂、导体受损。出现破损应停用并更换；不能靠折弯、胶带包裹或反复带电尝试判断。",
+    tip: "握接头本体拔插，不拉线身。先断开充电器，再检查；本关替换线已预先验证良好，不模拟快充协议或真实电流精度。",
+    fault: "旧线接头应力保护套开裂，应停止使用；替换线外观完整。",
+    color: "#c2936f",
+  },
+});
+
 export const chapters = [
   {
     id: "pc",
@@ -291,6 +316,16 @@ export const chapters = [
     parts: ["keycap", "keySwitch", "keyPcb"],
   },
 ];
+
+chapters.push({
+  id: "phone",
+  number: "04",
+  title: "掌心里的精密世界",
+  subtitle: "先查外部连接，再逐步走进手机内部",
+  icon: "Smartphone",
+  product: "手机",
+  parts: ["phonePort", "phoneCable"],
+});
 
 const repairPlans = {
   memory: [
@@ -539,6 +574,45 @@ jobs.push(
   },
 );
 
+jobs.push({
+  id: "phone-charge",
+  number: "010",
+  chapter: "phone",
+  rank: 1,
+  unlockAfter: "keyboard-clean",
+  title: "充电，要找个角度？",
+  subtitle: "手机维修 · 从外部排查开始",
+  customer: "小满",
+  avatar: "满",
+  device: "USB-C 教学手机 · 外部线材故障",
+  quote: "「充电总是断断续续，线要摆个角度才行。是不是电池坏了？想先查清楚。」",
+  symptom: "充电不稳定 · 接头护套破损",
+  target: "phonePort",
+  reward: 180,
+  xp: 120,
+  difficulty: "入门",
+  duration: "约 5 分钟",
+  lesson: "外部检查、USB-C 插拔与替换验证",
+  needs: ["cable"],
+  steps: [
+    { text: "握住旧线接头，平直拔出并移到回收盘", tool: "cable" },
+    { text: "分别观察接口舌片与旧线接头，记录两处证据", tool: "inspect" },
+    { text: "把已知良好的替换线对准接口，主动平直插到底", tool: "cable" },
+    { text: "轻拉接头本体，确认已固定", tool: "cable" },
+  ],
+  question: "这次为什么先换充电线，而不是直接拆手机换电池？",
+  answers: [
+    "所有充电故障都由线材引起",
+    "旧线已有破损证据，应停用，并用良好线材验证",
+    "USB-C 只能单面插入",
+  ],
+  correct: 1,
+  explanation:
+    "本关旧线护套破损，应停止使用；接口外观正常，替换为已知良好线材后充电恢复，证据指向旧线。USB-C 可正反插，但仍要对齐。若仍异常，应进一步排查适配器、接口与手机内部。",
+});
+export const externalAccess = (id) =>
+  ["keyboard-clean", "phone-charge"].includes(id);
+
 export const market = [
   {
     id: "air",
@@ -593,6 +667,8 @@ export const starterTools = ["inspect", "driver", "hand"];
 export const chapterOf = (job) => chapters.find((c) => c.id === job.chapter);
 export const unlocked = (id, completed) => {
   const index = jobs.findIndex((j) => j.id === id);
+  if (jobs[index]?.unlockAfter)
+    return completed.includes(jobs[index].unlockAfter);
   return index === 0 || (index > 0 && completed.includes(jobs[index - 1].id));
 };
 export const chapterUnlocked = (id, completed) =>
@@ -645,9 +721,17 @@ export function objective(s) {
     };
   if (!s.fixed && !s.unplugged)
     return {
-      text: pc ? "动手前，先关闭电源并拔掉电源线" : "拆装前，先断开 USB 供电",
+      text: pc
+        ? "动手前，先关闭电源并拔掉电源线"
+        : job.chapter === "phone"
+          ? "先关机并断开充电器端；手机端接头稍后亲手拔出"
+          : "拆装前，先断开 USB 供电",
       action: "unplug",
-      label: pc ? "关闭电源并拔线" : "拔下 USB 电源线",
+      label: pc
+        ? "关闭电源并拔线"
+        : job.chapter === "phone"
+          ? "关机并断开充电器端"
+          : "拔下 USB 电源线",
       tool: null,
     };
   if (!s.fixed && !s.grounded)
@@ -657,15 +741,15 @@ export function objective(s) {
       label: "戴好防静电腕带",
       tool: null,
     };
-  const keycapOnly = job.id === "keyboard-clean";
-  if (!keycapOnly && !s.fixed && s.screws > 0)
+  const externalOnly = externalAccess(job.id);
+  if (!externalOnly && !s.fixed && s.screws > 0)
     return {
       text: `卸下${cover}的固定螺丝，还剩 ${s.screws} 颗`,
       action: "unscrew",
       label: "卸下一颗螺丝",
       tool: "driver",
     };
-  if (!keycapOnly && !s.fixed && !s.panelOpen)
+  if (!externalOnly && !s.fixed && !s.panelOpen)
     return {
       text: `螺丝已取下，现在可以移开${cover}了`,
       action: "open",
@@ -688,14 +772,14 @@ export function objective(s) {
       tool: step.tool,
     };
   }
-  if (!keycapOnly && s.panelOpen)
+  if (!externalOnly && s.panelOpen)
     return {
       text: `零件已修复，装回${cover}`,
       action: "close",
       label: `装回${cover}`,
       tool: "hand",
     };
-  if (!keycapOnly && s.screws < 4)
+  if (!externalOnly && s.screws < 4)
     return {
       text: `装回固定螺丝，还剩 ${4 - s.screws} 颗`,
       action: "screw",
@@ -704,11 +788,14 @@ export function objective(s) {
     };
   if (s.unplugged)
     return {
-      text: keycapOnly
-        ? "键帽已装回并检查回弹，接回 USB 线"
-        : "外壳装好了，接回电源线",
+      text:
+        job.chapter === "phone"
+          ? "替换线已插稳，接通已知良好的 5 V 教学电源"
+          : externalOnly
+            ? "键帽已装回并检查回弹，接回 USB 线"
+            : "外壳装好了，接回电源线",
       action: "plug",
-      label: "接回电源线",
+      label: job.chapter === "phone" ? "接通 5 V 教学电源" : "接回电源线",
       tool: null,
     };
   return {
@@ -716,7 +803,9 @@ export function objective(s) {
       ? "按下电源键，验证维修结果"
       : job.chapter === "fan"
         ? "通电检查转动、送风和异响"
-        : "连接电脑，检查按键输入与设备识别",
+        : job.chapter === "phone"
+          ? "开机，观察充电状态是否持续稳定"
+          : "连接电脑，检查按键输入与设备识别",
     action: "test",
     label: pc ? "开机验证" : "通电验证",
     tool: null,
@@ -745,12 +834,10 @@ export function transition(state, action, value, inventory = starterTools) {
     return { state: s, ok: true };
   }
   if (action === "inspect") {
-    if (
-      job.id === "keyboard-clean" ? !s.unplugged || !s.grounded : !s.panelOpen
-    )
+    if (externalAccess(job.id) ? !s.unplugged || !s.grounded : !s.panelOpen)
       return fail(
-        job.id === "keyboard-clean"
-          ? "先断开 USB 并完成防静电准备，再检查按键。"
+        externalAccess(job.id)
+          ? "先断开外部电源并完成防静电准备，再观察外部零件。"
           : "先断电，再打开外壳，才能检查内部零件。",
       );
     if (s.tool !== "inspect") return fail("选中「观察」工具，再检查零件。");
@@ -778,7 +865,9 @@ export function transition(state, action, value, inventory = starterTools) {
       return add(
         job.chapter === "pc"
           ? "已关机、关闭电源开关并拔下电源线。"
-          : "USB 电源已断开，开始低压设备拆装。",
+          : job.chapter === "phone"
+            ? "手机已关机，充电器端已断开。电池仍在机内，本关不拆机、不接触内部电路。"
+            : "USB 电源已断开，开始低压设备拆装。",
       );
     case "ground":
       s.grounded = true;
@@ -796,15 +885,17 @@ export function transition(state, action, value, inventory = starterTools) {
         return fail(`先选中${parts[job.target].name}，再进行这一步操作。`);
       s.repairStep++;
       s.fixed = s.repairStep >= job.steps.length;
-      if (s.fixed && job.id === "keyboard-clean") {
+      if (s.fixed && externalAccess(job.id)) {
         s.panelOpen = false;
         s.screws = 4;
       }
       return add(
         s.fixed
-          ? job.id === "keyboard-clean"
-            ? "键帽已装回，连续按压回弹检查通过。接回 USB 后验证输入。"
-            : `${parts[job.target].name}已处理完成。装回外壳后，再通电测试。`
+          ? job.chapter === "phone"
+            ? "替换线已插稳并通过固定检查。接通教学电源后开机验证充电。"
+            : job.id === "keyboard-clean"
+              ? "键帽已装回，连续按压回弹检查通过。接回 USB 后验证输入。"
+              : `${parts[job.target].name}已处理完成。装回外壳后，再通电测试。`
           : `${goal.text}，完成。`,
       );
     }
@@ -824,7 +915,9 @@ export function transition(state, action, value, inventory = starterTools) {
           ? "POST 自检通过，系统正常启动。维修验证成功！"
           : job.chapter === "fan"
             ? "通电模拟测试通过：转动顺畅、送风正常、没有异常噪声。"
-            : "模拟输入测试通过：按键输入与 USB 识别均正常。",
+            : job.chapter === "phone"
+              ? "教学充电验证通过：充电指示持续稳定。替换良好线材后恢复，故障证据指向旧线；不模拟快充协议与实际电流。"
+              : "模拟输入测试通过：按键输入与 USB 识别均正常。",
       );
     case "quiz":
       if (value !== job.correct) return fail("再想一想，可以翻一翻硬件图鉴。");
@@ -844,7 +937,7 @@ export function progress(s) {
   return [
     s.unplugged || s.fixed,
     s.grounded,
-    s.panelOpen || s.fixed || (s.jobId === "keyboard-clean" && s.grounded),
+    s.panelOpen || s.fixed || (externalAccess(s.jobId) && s.grounded),
     s.inspected.includes(jobs.find((j) => j.id === s.jobId).target),
     s.fixed,
     s.tested,

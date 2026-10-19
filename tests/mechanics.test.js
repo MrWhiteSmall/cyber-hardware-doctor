@@ -15,7 +15,7 @@ import {
 import { isDirectAction, supportsDirectJob } from "../src/DirectPC.js";
 import { createGame } from "../src/game.js";
 
-test("前七关的拆装必须在手动模式操作，其余工单仍标为辅助教学", () => {
+test("前七关和手机首关的拆装必须在手动模式操作，键盘后两关仍为辅助教学", () => {
   for (const id of [
     "memory",
     "cooling",
@@ -24,12 +24,13 @@ test("前七关的拆装必须在手动模式操作，其余工单仍标为辅�
     "fan-bearing",
     "fan-cable",
     "keyboard-clean",
+    "phone-charge",
   ]) {
     assert.equal(supportsDirectJob(id), true);
     const s = { ...createGame(id), unplugged: true, grounded: true };
     assert.equal(
       isDirectAction(s),
-      id !== "keyboard-clean",
+      !["keyboard-clean", "phone-charge"].includes(id),
       "单键先观察，其余关卡的螺丝不能点按钮跳过",
     );
     assert.equal(
@@ -50,7 +51,9 @@ test("前七关的拆装必须在手动模式操作，其余工单仍标为辅�
                     ? "fanMotor"
                     : id === "fan-cable"
                       ? "fanCable"
-                      : "keycap",
+                      : id === "keyboard-clean"
+                        ? "keycap"
+                        : "phonePort",
         ],
       }),
       true,

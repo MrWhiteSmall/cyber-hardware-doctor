@@ -65,6 +65,7 @@ import {
   unlocked,
   chapterUnlocked,
   chapterOf,
+  externalAccess,
 } from "./game.js";
 import { toolLessons } from "./tutorials.js";
 import { roadmap } from "./roadmap.js";
@@ -108,6 +109,8 @@ const partIcons = {
   keycap: Keyboard,
   keySwitch: Grip,
   keyPcb: CircuitBoard,
+  phonePort: Smartphone,
+  phoneCable: Cable,
 };
 const balance = (p) =>
   200 +
@@ -394,9 +397,10 @@ function App() {
       setModal("tutorial");
     }
   }
-  const keycapOnly = game.jobId === "keyboard-clean";
+  const phoneOnly = game.jobId === "phone-charge";
+  const externalOnly = externalAccess(game.jobId);
   const accessible =
-    game.panelOpen || (keycapOnly && game.unplugged && game.grounded);
+    game.panelOpen || (externalOnly && game.unplugged && game.grounded);
   const steps = [
     {
       title: "安全准备",
@@ -405,13 +409,17 @@ function App() {
       active: !game.grounded,
     },
     {
-      title: keycapOnly ? "观察按键" : "打开外壳",
-      sub: keycapOnly ? "检查卡顿位置，无需拆外壳" : "取下螺丝，移开外壳",
-      done: keycapOnly
-        ? game.inspected.includes("keycap")
+      title: phoneOnly ? "外部检查" : externalOnly ? "观察按键" : "打开外壳",
+      sub: phoneOnly
+        ? "检查线材与接口，无需拆机"
+        : externalOnly
+          ? "检查卡顿位置，无需拆外壳"
+          : "取下螺丝，移开外壳",
+      done: externalOnly
+        ? game.inspected.includes(job.target)
         : game.panelOpen || game.fixed,
-      active: keycapOnly
-        ? game.grounded && !game.inspected.includes("keycap")
+      active: externalOnly
+        ? game.grounded && !game.inspected.includes(job.target)
         : game.grounded && !game.panelOpen && !game.fixed,
     },
     {
@@ -421,11 +429,15 @@ function App() {
       active:
         accessible &&
         !game.fixed &&
-        (!keycapOnly || game.inspected.includes("keycap")),
+        (!externalOnly || game.inspected.includes(job.target)),
     },
     {
       title: "开机验证",
-      sub: keycapOnly ? "接回 USB，验证按键输入" : "装回外壳，验证维修结果",
+      sub: phoneOnly
+        ? "接通教学电源，验证稳定充电"
+        : externalOnly
+          ? "接回 USB，验证按键输入"
+          : "装回外壳，验证维修结果",
       done: game.tested,
       active: game.fixed && !game.tested,
     },
@@ -566,7 +578,9 @@ function App() {
                         ? "先分离两端，短接表笔自检、逐根测通断；新线复测后再手动对位接回。"
                         : game.jobId === "keyboard-clean"
                           ? "拔键端扣住下沿，垂直提起；逐处清屑，对轴压回后按压检查回弹。"
-                          : "本关目前为辅助教学；前七关已开放手动实操。"}
+                          : phoneOnly
+                            ? "外部排查：分离破损旧线，观察两处证据，手动插入良好替换线并验证。"
+                            : "本关目前为辅助教学；前七关与手机入门关已开放手动实操。"}
           </small>
         </div>
         <div className="workspace">
@@ -580,7 +594,10 @@ function App() {
             </div>
             <div className="chapter-indicator">
               CH.{chapter.number} / {chapter.title}
-              <span>{job.rank} / 3</span>
+              <span>
+                {job.rank} /{" "}
+                {jobs.filter((j) => j.chapter === chapter.id).length}
+              </span>
             </div>
             <div className="order-heading">
               <span className="tag orange">{job.difficulty}工单</span>
@@ -654,27 +671,33 @@ function App() {
                     ? "DESKTOP PC"
                     : chapter.id === "fan"
                       ? "USB FAN"
-                      : "MECHANICAL KEYBOARD"}
+                      : phoneOnly
+                        ? "SMARTPHONE / USB-C"
+                        : "MECHANICAL KEYBOARD"}
                 </span>
               </div>
               <span className={`power-status ${game.unplugged ? "safe" : ""}`}>
                 <span />
                 {game.tested
                   ? "设备运行正常"
-                  : game.unplugged
-                    ? "电源已断开"
-                    : "电源已连接"}
+                  : phoneOnly && game.unplugged
+                    ? "外部电源已断开"
+                    : game.unplugged
+                      ? "电源已断开"
+                      : "电源已连接"}
               </span>
             </div>
             <div className="scene-area">
               <div className="scene-top-note">
                 <span className="mono">LRS — {job.number}</span>
                 <small>
-                  {keycapOnly
-                    ? "普通单键维护 · 无需拆外壳"
-                    : game.panelOpen
-                      ? "外壳已打开 · 可检查内部零件"
-                      : "选择工具，开始你的维修"}
+                  {phoneOnly
+                    ? "外部线材维修 · 无需拆机 · 电池仍在机内"
+                    : externalOnly
+                      ? "普通单键维护 · 无需拆外壳"
+                      : game.panelOpen
+                        ? "外壳已打开 · 可检查内部零件"
+                        : "选择工具，开始你的维修"}
                 </small>
               </div>
               <Workbench
@@ -785,15 +808,17 @@ function App() {
                       ? direct
                         ? ["cooling", "fan-dust"].includes(game.jobId)
                           ? "在叶片标记上长按固定，再换气吹，对准每处积灰短按约半秒并松开。"
-                          : game.jobId === "keyboard-clean"
-                            ? "选拔键器钢丝端，扣住键帽下沿再垂直提起；短促清屑后对轴压回，按下并松手三次检查回弹。"
-                            : game.jobId === "fan-cable"
-                              ? "表笔要碰到实际金属触点。先用通断档自检并逐根测线，再换接线工具，手动对位和推入两端。"
-                              : game.jobId === "fan-bearing"
-                                ? "先轻拨叶片判断阻力，再在轴承背面拔出胶塞。润滑工具对准注油孔短按约四分之一秒；压回胶塞后还要轻拨复查。"
-                                : game.jobId === "storage"
-                                  ? "先用拆装工具轻推供电接头；再用接线工具按住数据接头的金属锁扣约半秒，保持按住沿箭头拔出，重新对位推入并轻拉检查。"
-                                  : "选择拆装工具，在 3D 视图中沿结构操作；对齐后要主动推入。"
+                          : phoneOnly
+                            ? "先拔出并移开旧线；按住观察接口与线材，再对位插入替换线、轻拉确认固定。"
+                            : game.jobId === "keyboard-clean"
+                              ? "选拔键器钢丝端，扣住键帽下沿再垂直提起；短促清屑后对轴压回，按下并松手三次检查回弹。"
+                              : game.jobId === "fan-cable"
+                                ? "表笔要碰到实际金属触点。先用通断档自检并逐根测线，再换接线工具，手动对位和推入两端。"
+                                : game.jobId === "fan-bearing"
+                                  ? "先轻拨叶片判断阻力，再在轴承背面拔出胶塞。润滑工具对准注油孔短按约四分之一秒；压回胶塞后还要轻拨复查。"
+                                  : game.jobId === "storage"
+                                    ? "先用拆装工具轻推供电接头；再用接线工具按住数据接头的金属锁扣约半秒，保持按住沿箭头拔出，重新对位推入并轻拉检查。"
+                                    : "选择拆装工具，在 3D 视图中沿结构操作；对齐后要主动推入。"
                         : `选中${parts[job.target].name}，点击下方按钮完成操作。`
                       : direct && isDirectAction(game)
                         ? "按 3D 视图中的旋转或平移提示，实际操作零件。"
@@ -882,8 +907,8 @@ function App() {
                         : "外观及连接未发现与本次故障有关的异常。"
                       : accessible
                         ? "选中「观察」工具，检查这个零件。"
-                        : keycapOnly
-                          ? "先断开 USB 并完成防静电准备，再检查按键。"
+                        : externalOnly
+                          ? "先断开外部电源并完成防静电准备，再观察外部零件。"
                           : "先断电并打开外壳，看看它的实际情况。"}
                   </p>
                   {accessible && (
@@ -1006,7 +1031,7 @@ function App() {
               plan: "章节设计预览 · 尚未开放试玩",
               market: "把赚来的维修费，换成解决新问题的能力。",
               tutorial: "先理解原理，再带着新知识动手。",
-              jobs: "三个章节，九次修理。从认识零件到独立排查。",
+              jobs: `${chapters.length} 个章节，${jobs.length} 次修理。从认识零件到独立排查。`,
               book: "用熟悉的比喻，理解陌生的零件。",
               notes: "你亲手检查过的零件，会记录在这里。",
               help: "跟着工单，把第一件设备修好。",
@@ -1052,7 +1077,7 @@ function App() {
                               j.chapter === c.id && completed.includes(j.id),
                           ).length
                         }{" "}
-                        / 3 已完成
+                        / {jobs.filter((j) => j.chapter === c.id).length} 已完成
                       </small>
                     </button>
                   );
@@ -1060,6 +1085,8 @@ function App() {
               </div>
               <p className="chapter-description">
                 {chapters.find((c) => c.id === chapterTab).subtitle}
+                {chapterTab === "phone" &&
+                  " · 完成第七关即可进入；拆屏、排线和电池关卡筹备中。"}
               </p>
               <div className="job-list">
                 {jobs
@@ -1092,7 +1119,9 @@ function App() {
                           ) : !open ? (
                             <>
                               <LockKeyhole size={14} />
-                              先通过上一关
+                              {j.unlockAfter === "keyboard-clean"
+                                ? "先通过键盘清洁关"
+                                : "先通过上一关"}
                             </>
                           ) : j.id === game.jobId ? (
                             "重新接诊"
@@ -1180,7 +1209,10 @@ function App() {
             <>
               <div className="roadmap-summary">
                 <Map size={22} />
-                <span>12 章成长地图 · 当前开放 3 章 / 9 关</span>
+                <span>
+                  12 章成长地图 · 当前开放 {chapters.length} 章 / {jobs.length}{" "}
+                  关
+                </span>
                 <small>地图为长期课程顺序，试玩从电脑章开始。</small>
               </div>
               <div className="roadmap-grid">
@@ -1388,9 +1420,9 @@ function App() {
                   <b>选工具，再动手</b>
                   <p>
                     使用工具台或数字键 1–8
-                    切换工具。前七关默认手动实操：电脑章练习内存、散热清灰和
+                    切换工具。前七关与手机入门关默认手动实操：电脑章练习内存、散热清灰和
                     SATA
-                    接线；风扇章练习护网拆装、分区清灰、可维护轴承润滑和表笔测线；键盘章首关练习拔键清屑与回弹检查。辅助教学可用步骤按钮。
+                    接线；风扇章练习护网拆装、分区清灰、可维护轴承润滑和表笔测线；键盘章首关练习拔键清屑与回弹检查；手机章练习外部检查与换线验证。辅助教学可用步骤按钮。
                   </p>
                 </li>
                 <li>

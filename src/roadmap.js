@@ -90,14 +90,15 @@ export const roadmap = [
   },
   {
     id: "phone",
+    playable: "phone",
     order: "07",
     name: "掌心里的精密世界",
     category: "手机",
     tier: "进阶",
     icon: "Smartphone",
-    focus: "学习胶封、柔性排线、模组更换和电池管理。",
+    focus: "已开放外部线材排查入门关；拆屏、排线和电池关卡筹备中。",
     levels: [
-      "充电口异物与外部线材排查",
+      "外部接口检查与破损充电线更换（已制作）",
       "排线连接与屏幕模组故障",
       "电池健康与模组更换模拟",
     ],

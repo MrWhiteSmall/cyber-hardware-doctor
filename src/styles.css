@@ -2718,7 +2718,7 @@ h1 > span {
 }
 .chapter-tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 .chapter-tabs > button {
@@ -3055,6 +3055,7 @@ h1 > span {
     max-width: 80px;
   }
   .chapter-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 7px;
   }
   .chapter-tabs > button {
